@@ -1,0 +1,1 @@
+# quickwit-logs-lab-automaton
