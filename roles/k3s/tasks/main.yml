@@ -1,0 +1,67 @@
+---
+- name: Disable firewalld (lab only)
+  ansible.builtin.systemd:
+    name: firewalld
+    state: stopped
+    enabled: false
+  failed_when: false
+  when: k3s_disable_firewalld
+
+- name: Check current k3s version (if any)
+  ansible.builtin.command: /usr/local/bin/k3s --version
+  register: k3s_current
+  changed_when: false
+  failed_when: false
+
+- name: Install k3s {{ k3s_version }}
+  when: k3s_version not in (k3s_current.stdout | default(''))
+  block:
+    - name: Create working dir
+      ansible.builtin.file:
+        path: "{{ k3s_install_dir }}"
+        state: directory
+        mode: "0750"
+
+    - name: Download k3s install script
+      ansible.builtin.get_url:
+        url: https://get.k3s.io
+        dest: "{{ k3s_install_dir }}/install.sh"
+        mode: "0750"
+
+    - name: Run k3s installer
+      ansible.builtin.command: "{{ k3s_install_dir }}/install.sh"
+      environment:
+        INSTALL_K3S_VERSION: "{{ k3s_version }}"
+      changed_when: true
+
+- name: Wait for the node to be Ready
+  ansible.builtin.command: >
+    /usr/local/bin/k3s kubectl wait --for=condition=Ready node --all --timeout=180s
+  changed_when: false
+
+# The kubeconfig export below is only needed when the WORKSTATION drives the
+# cluster (LAN model). When k8s work runs on the node (default), play 2 reads
+# /etc/rancher/k3s/k3s.yaml directly, so all three tasks are skipped.
+- name: Read kubeconfig from the node
+  ansible.builtin.slurp:
+    src: /etc/rancher/k3s/k3s.yaml
+  register: k3s_kubeconfig
+  when: not (k8s_control_on_node | bool)
+
+- name: Ensure local kubeconfig dir exists
+  ansible.builtin.file:
+    path: "{{ kubeconfig_local_path | dirname }}"
+    state: directory
+    mode: "0700"
+  delegate_to: localhost
+  become: false
+  when: not (k8s_control_on_node | bool)
+
+- name: Write kubeconfig locally, pointing at the node IP
+  ansible.builtin.copy:
+    content: "{{ k3s_kubeconfig.content | b64decode | replace('127.0.0.1', node_ip) }}"
+    dest: "{{ kubeconfig_local_path }}"
+    mode: "0600"
+  delegate_to: localhost
+  become: false
+  when: not (k8s_control_on_node | bool)

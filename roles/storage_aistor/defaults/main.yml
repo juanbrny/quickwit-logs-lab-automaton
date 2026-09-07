@@ -1,0 +1,18 @@
+---
+aistor_helm_repo: https://helm.min.io/
+aistor_operator_namespace: aistor
+aistor_release_name: primary-object-store
+# console only; the S3 NodePort is s3_nodeport, in the contract file
+aistor_console_nodeport: 31000
+# The ObjectStore CR name (set by OUR helm values). Distinct from
+# s3_service_name, which the OPERATOR chooses and has renamed between
+# versions. Never use one where the other is meant.
+aistor_objectstore_name: myminio
+# Root/admin identity for the tenant. NOT "minio": newer charts reject the weak
+# minio/minio123 pair, and "minio" is half of it. Used only to provision buckets
+# and the scoped app key. The strong password is aistor_root_password in the
+# vaulted secrets.yml.
+aistor_root_user: byocadmin
+# aistor_root_password comes from the vaulted secrets.yml
+aistor_green_retries: 60
+aistor_green_delay: 5

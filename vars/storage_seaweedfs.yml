@@ -1,0 +1,16 @@
+---
+# CONTRACT published by the seaweedfs backend. Self-contained: every key here
+# resolves from this file + group_vars, never from a role's defaults (role
+# defaults are only in scope while that role runs).
+s3_namespace: seaweedfs
+# The chart names the S3 service "{fullname}-s3"; the role pins
+# fullnameOverride to "seaweedfs", so this is deterministic across chart
+# versions instead of being derived from the release name.
+s3_service_name: seaweedfs-s3
+s3_scheme: "{{ seaweedfs_s3_scheme }}"
+s3_port: 8333                    # SeaweedFS S3 gateway (NOT 9000)
+s3_nodeport: 31101
+s3_host: "{{ s3_service_name }}.{{ s3_namespace }}.svc.cluster.local"
+s3_endpoint: "{{ s3_scheme }}://{{ s3_host }}:{{ s3_port }}"
+s3_endpoint_external: "{{ s3_scheme }}://{{ node_ip }}:{{ s3_nodeport }}"
+s3_force_path_style: true

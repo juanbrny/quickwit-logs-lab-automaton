@@ -1,0 +1,31 @@
+# NOTE: uses the in-tree barmanObjectStore API — deprecated in CNPG 1.26,
+# slated for removal in 1.30. Fine for a lab; migrate to the Barman Cloud
+# Plugin (separate ObjectStore CR + plugins:) if this must outlast upgrades.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ cnpg_cluster_name }}
+  namespace: {{ cnpg_namespace }}
+spec:
+  instances: {{ cnpg_instances }}
+  storage:
+    size: {{ cnpg_storage_size }}
+  bootstrap:
+    initdb:
+      database: datadog
+      owner: datadog
+  backup:
+    retentionPolicy: "1d" #Avoid WAL to consume all S3 space even with no load on demo cluster
+    barmanObjectStore:
+      destinationPath: "s3://{{ cnpg_backup_bucket }}/{{ cnpg_cluster_name }}"
+      endpointURL: "{{ s3_endpoint }}"
+      s3Credentials:
+        accessKeyId:
+          name: s3-creds
+          key: AWS_ACCESS_KEY_ID
+        secretAccessKey:
+          name: s3-creds
+          key: AWS_SECRET_ACCESS_KEY
+      wal:
+        compression: gzip
+        maxParallel: 1

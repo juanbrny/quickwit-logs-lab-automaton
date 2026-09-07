@@ -1,0 +1,31 @@
+{
+  "identities": [
+    {
+      "name": "lab-admin",
+      "credentials": [
+        {
+          "accessKey": "{{ seaweedfs_admin_access_key }}",
+          "secretKey": "{{ seaweedfs_admin_secret_key }}"
+        }
+      ],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    },
+    {
+      "name": "datadog-cloudprem-byoc",
+      "credentials": [
+        {
+          "accessKey": "{{ s3_app_access_key }}",
+          "secretKey": "{{ s3_app_secret_key }}"
+        }
+      ],
+      "actions": [
+{% for bucket in s3_buckets %}
+        "Read:{{ bucket }}",
+        "Write:{{ bucket }}",
+        "List:{{ bucket }}",
+        "Tagging:{{ bucket }}"{{ "," if not loop.last }}
+{% endfor %}
+      ]
+    }
+  ]
+}

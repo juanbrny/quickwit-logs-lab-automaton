@@ -1,0 +1,10 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: datadog-hourly-backup
+  namespace: {{ cnpg_namespace }}
+spec:
+  schedule: "{{ cnpg_backup_schedule }}"
+  backupOwnerReference: self
+  cluster:
+    name: {{ cnpg_cluster_name }}

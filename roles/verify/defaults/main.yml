@@ -1,0 +1,19 @@
+---
+verify_pod_timeout: 600s
+
+# Guards against the chart silently falling back to its own appVersion (0.8.x).
+# Keep in step with quickwit_image_tag in group_vars/all/versions.yml.
+verify_expected_qw_version: "0.9.0"
+verify_expected_qw_major_minor: "0.9"
+
+# The document pushed through the ingress. Field names must match the doc
+# mapping seeded in roles/quickwit/templates/quickwit-values.yaml.j2, otherwise
+# `mode: dynamic` will silently store them untyped and the search below misses.
+verify_test_doc:
+  timestamp: "{{ ansible_date_time.iso8601 | default('1970-01-01T00:00:00Z') }}"
+  body: "Hello from the Ansible-provisioned Quickwit lab"
+  severity_text: INFO
+  service_name: demo
+  host: "{{ lab_node_name }}"
+
+verify_search_query: "service_name:demo"

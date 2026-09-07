@@ -1,0 +1,62 @@
+---
+# =====================================================================
+# SINGLE SOURCE OF TRUTH FOR EVERY EXTERNAL VERSION.
+# Nothing else in this repo may use ":latest" or an unpinned chart.
+# Preflight fails on any :latest or CONFIRM_ME so the base can't drift
+# silently. Upgrade one line at a time.
+# =====================================================================
+
+k3s_version: "v1.35.6+k3s1"
+helm_version: "v3.16.3"                  # SSM path only; unused on SSH
+
+mc_image: "quay.io/minio/mc:RELEASE.2025-05-21T01-59-54Z"
+
+# --- Quickwit ---
+# The official chart has NOT been bumped for 0.9 yet: chart 0.8.16 still
+# declares appVersion v0.8.2. We therefore pin the image tag explicitly and
+# let the chart version float independently of the engine version.
+quickwit_image_tag: "v0.9.0"
+
+# --- Grafana Quickwit datasource plugin ---
+# The Grafana catalog only publishes up to 0.4.5, which is a React 18 build and
+# fails to load on Grafana 13 (React 19). 0.6.0 is the first release that
+# supports Grafana 12.1+/13, and it is only distributed as a GitHub release
+# asset. The zip carries a "commercial" Grafana signature, so no
+# GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS is needed.
+grafana_quickwit_plugin_version: "0.6.0"
+grafana_quickwit_plugin_base_url: https://github.com/quickwit-oss/quickwit-datasource/releases/download
+grafana_quickwit_plugin_url: >-
+  {{ grafana_quickwit_plugin_base_url }}/v{{ grafana_quickwit_plugin_version
+  }}/quickwit-quickwit-datasource-{{ grafana_quickwit_plugin_version }}.zip
+
+charts:
+  aistor_operator:
+    repo_name: minio
+    repo_url: https://helm.min.io/
+    chart: minio/aistor-operator
+    version: "5.9.0"
+  aistor_objectstore:
+    chart: minio/aistor-objectstore
+    version: "1.0.16"
+  seaweedfs:
+    repo_name: seaweedfs
+    repo_url: https://seaweedfs.github.io/seaweedfs/helm
+    chart: seaweedfs/seaweedfs
+    version: "4.39.0"
+  cnpg:
+    repo_name: cnpg
+    repo_url: https://cloudnative-pg.github.io/charts
+    chart: cnpg/cloudnative-pg
+    version: "0.29.0"
+  quickwit:
+    repo_name: quickwit
+    repo_url: https://helm.quickwit.io
+    chart: quickwit/quickwit
+    version: "0.8.16"
+  grafana:
+    # The chart moved out of grafana/helm-charts in January 2026. The old repo
+    # only carries a redirect note now.
+    repo_name: grafana-community
+    repo_url: https://grafana-community.github.io/helm-charts
+    chart: grafana-community/grafana
+    version: "13.2.2"

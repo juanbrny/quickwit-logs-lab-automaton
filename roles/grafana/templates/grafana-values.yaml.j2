@@ -1,0 +1,59 @@
+fullnameOverride: {{ grafana_fullname }}
+
+admin:
+  existingSecret: {{ grafana_admin_secret }}
+  userKey: admin-user
+  passwordKey: admin-password
+
+persistence:
+  enabled: true
+  storageClassName: {{ default_storage_class }}
+  size: {{ grafana_storage_size }}
+
+# NodePort so the UI is reachable without Traefik as well. The Traefik route on
+# :80 is applied separately by tasks/ingress_traefik.yml — both paths lead to
+# this same Service.
+service:
+  enabled: true
+  type: NodePort
+  port: 80
+  targetPort: 3000
+  nodePort: {{ grafana_nodeport }}
+
+# The chart renders this list into GF_PLUGINS_PREINSTALL_SYNC, whose format is
+# <id>@<version>@<url>. GF_INSTALL_PLUGINS is deprecated since Grafana 12.1.
+#
+# We install from the GitHub release, not the Grafana catalog: the catalog only
+# publishes up to 0.4.5, a React 18 build that cannot load on Grafana 13. The
+# release zip is signed (signatureType "commercial", signedByOrg "quickwit"),
+# so no unsigned-plugin allowlist is needed.
+plugins:
+  - "quickwit-quickwit-datasource@{{ grafana_quickwit_plugin_version }}@{{ grafana_quickwit_plugin_url }}"
+
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources:
+      - name: {{ grafana_datasource_name }}
+        uid: {{ grafana_datasource_uid }}
+        type: quickwit-quickwit-datasource
+        access: proxy
+        isDefault: true
+        # The URL must carry the /api/v1 suffix — the plugin appends its own
+        # paths (/indexes, /{index}/search) to it.
+        url: http://{{ quickwit_fullname }}-searcher.{{ quickwit_namespace }}.svc.cluster.local:7280/api/v1
+        jsonData:
+          index: {{ quickwit_index_id }}
+          logMessageField: {{ quickwit_log_message_field }}
+          logLevelField: {{ quickwit_log_level_field }}
+
+grafana.ini:
+  server:
+    domain: "{{ node_ip }}"
+    root_url: "%(protocol)s://%(domain)s{{ grafana_subpath }}/"
+    # Grafana then serves under the sub path on EVERY listener, so the NodePort
+    # URL is http://<node>:{{ grafana_nodeport }}{{ grafana_subpath }} too.
+    serve_from_sub_path: true
+  analytics:
+    check_for_updates: false
+    reporting_enabled: false

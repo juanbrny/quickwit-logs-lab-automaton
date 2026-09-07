@@ -1,0 +1,125 @@
+# Upstream Quickwit OSS. The chart is pinned separately from the engine because
+# chart 0.8.16 still declares appVersion v0.8.2 — there is no 0.9 chart yet.
+fullnameOverride: {{ quickwit_fullname }}
+
+image:
+  tag: {{ quickwit_image_tag }}
+
+serviceAccount:
+  create: true
+  name: quickwit
+
+# Global env for every Quickwit pod (list form; the chart also accepts a map).
+environment:
+  - name: AWS_REGION
+    value: "{{ s3_region }}"
+
+# S3 credentials for every pod. Indexer, searcher and janitor all touch the
+# object store, so this is deliberately global rather than per-component.
+environmentFrom:
+  - secretRef:
+      name: {{ quickwit_s3_secret }}
+
+configLocation: /quickwit/node.yaml
+
+config:
+  # NOT a typo. Quickwit 0.9.0 still only accepts the string "0.8" for the NODE
+  # config schema (quickwit-config VersionedNodeConfig has a single 0.8 arm).
+  # Setting "0.9" here makes every pod fail to start. Index configs are a
+  # different schema and do accept "0.9" — see seed.indexes below.
+  version: "0.8"
+  listen_address: 0.0.0.0
+  gossip_listen_port: 7282
+  data_dir: /quickwit/qwdata
+  default_index_root_uri: {{ quickwit_index_root_uri }}
+  # 0.9 deprecates top-level rest_listen_port in favour of rest.listen_port.
+  # The chart sets neither, so the 7280 default applies and nothing to do here.
+  storage:
+    s3:
+      endpoint: {{ s3_endpoint }}
+      region: {{ s3_region }}
+      # Required for MinIO/AIStor/SeaweedFS and every other non-AWS backend.
+      # `flavor: minio` would set this implicitly; being explicit keeps the
+      # contract in vars/storage_*.yml as the single source of truth.
+      force_path_style_access: {{ s3_force_path_style | lower }}
+
+metastore:
+  replicaCount: 1
+  extraEnvFrom:
+    - secretRef:
+        name: {{ quickwit_metastore_secret }}
+
+indexer:
+  replicaCount: {{ quickwit_indexer_replicas }}
+  persistentVolume:
+    enabled: true
+    storage: {{ quickwit_indexer_pv_size }}
+    storageClass: {{ default_storage_class }}
+  resources:
+    requests:
+      memory: {{ quickwit_indexer_memory_request }}
+
+searcher:
+  replicaCount: {{ quickwit_searcher_replicas }}
+  resources:
+    requests:
+      memory: {{ quickwit_searcher_memory_request }}
+
+control_plane:
+  enabled: true
+
+janitor:
+  enabled: true
+
+# --- Seed index ----------------------------------------------------------
+# Rendered into a ConfigMap and applied by a post-install/post-upgrade Job that
+# runs `quickwit index describe <id> || quickwit index create`, so re-runs are
+# safe.
+#
+# The Grafana plugin resolves the time field from this doc mapping and REFUSES
+# the datasource if the timestamp field has no explicit `output_format`
+# (pkg/quickwit/timestamp_infos.go). Do not drop that line.
+bootstrap:
+  enabled: true
+
+seed:
+  indexes:
+    - version: "0.9"
+      index_id: {{ quickwit_index_id }}
+      doc_mapping:
+        # Accept whatever the shipper sends; only the fields below are typed.
+        mode: dynamic
+        field_mappings:
+          - name: timestamp
+            type: datetime
+            fast: true
+            fast_precision: milliseconds
+            input_formats:
+              - rfc3339
+              - unix_timestamp
+            output_format: unix_timestamp_nanos
+          - name: {{ quickwit_log_message_field }}
+            type: text
+            tokenizer: default
+            record: position
+          - name: {{ quickwit_log_level_field }}
+            type: text
+            tokenizer: raw
+            fast: true            # the plugin requires a fast log-level field
+          - name: service_name
+            type: text
+            tokenizer: raw
+            fast: true
+          - name: host
+            type: text
+            tokenizer: raw
+        timestamp_field: timestamp
+      indexing_settings:
+        commit_timeout_secs: {{ quickwit_commit_timeout_secs }}
+      search_settings:
+        default_search_fields:
+          - {{ quickwit_log_message_field }}
+
+ingress:
+  # Replaced by a Traefik IngressRoute — see tasks/ingress_traefik.yml.
+  enabled: false

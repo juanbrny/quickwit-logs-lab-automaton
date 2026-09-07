@@ -1,0 +1,30 @@
+# AIStor/MinIO-specific: create the scoped app key, idempotently.
+set -eu
+cat > /tmp/policy.json << 'POLICY'
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["s3:*"],
+      "Resource": [
+{% for bucket in s3_buckets %}
+        "arn:aws:s3:::{{ bucket }}",
+        "arn:aws:s3:::{{ bucket }}/*"{{ "," if not loop.last }}
+{% endfor %}
+      ]
+    }
+  ]
+}
+POLICY
+
+if mc {{ mc_opts }} admin accesskey info adm/ {{ s3_app_access_key }} >/dev/null 2>&1; then
+  echo "KEY: EXISTS — leaving it"
+else
+  mc {{ mc_opts }} admin accesskey create adm/ {{ aistor_root_user }} \
+    --access-key "{{ s3_app_access_key }}" \
+    --secret-key "{{ s3_app_secret_key }}" \
+    --policy /tmp/policy.json \
+    --name datadog-cloudprem-byoc
+  echo "KEY: CREATED"
+fi

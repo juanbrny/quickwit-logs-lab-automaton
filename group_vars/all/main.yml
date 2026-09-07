@@ -1,0 +1,114 @@
+---
+# =====================================================================
+# VARIANT SELECTORS — the only two lines you touch to swap components.
+# Each maps to a role (roles/<k8s_distro>, roles/storage_<s3_backend>)
+# plus a contract vars file (vars/storage_<s3_backend>.yml).
+# =====================================================================
+k8s_distro: k3s            # future: rke2, kubeadm, ...
+s3_backend: aistor         # aistor | seaweedfs | external
+
+# Derived from the inventory — do NOT hardcode. The lab_node group must hold
+# exactly one host (asserted in site.yml).
+lab_node_name: "{{ groups['lab_node'][0] }}"
+
+# Node address. Prefer the IP the node reports about itself (facts gathered in
+# play 1); fall back to ansible_host, then the inventory name. With SSM there is
+# no ansible_host (inventory name is an instance id), hence the self-report.
+node_ip: >-
+  {{ hostvars[lab_node_name].ansible_default_ipv4.address
+     | default(hostvars[lab_node_name].ansible_host)
+     | default(lab_node_name) }}
+
+# Does the Kubernetes work run ON the node, or on the workstation?
+# True unless k8s_control is explicitly localhost. Default = on the node, which
+# is what you want for any lab reached over a public IP or SSM: no inbound 6443,
+# deps live on the node, no split-brain about which cluster you are hitting.
+k8s_control_on_node: "{{ 'localhost' not in (groups['k8s_control'] | default(['__none__'])) }}"
+
+# kubeconfig from the perspective of whoever runs kubectl/helm.
+kubeconfig_path: >-
+  {{ '/etc/rancher/k3s/k3s.yaml' if (k8s_control_on_node | bool)
+     else kubeconfig_local_path }}
+
+# --- k8s distro contract (defaults for k3s; a different distro role ---
+# --- may need different values here)                                 ---
+kubeconfig_local_path: "{{ playbook_dir }}/.kubeconfig/{{ k8s_distro }}-byoc.yaml"
+ingress_flavor: traefik          # consumed by quickwit/grafana to pick ingress template
+default_storage_class: local-path
+
+# --- S3 inputs (backend-agnostic; every storage role must honor these) ---
+s3_buckets:
+  - quickwitdata
+  - pgsqlbackups
+s3_region: us-east-1
+# --- S3 credential flow (see README "Credential flow") ---
+# Storage roles PUBLISH the app credentials; downstream roles CONSUME them.
+# The desired keys for backends that let you choose (aistor, seaweedfs) live in
+# the vaulted secrets.yml as s3_app_access_key / s3_app_secret_key. Backends
+# that generate or are handed credentials (external, a future rook) publish
+# whatever they got. Either way the result lands here:
+s3_credentials_secret: lab-s3-credentials
+
+# Skip TLS verification on S3 (adds `mc --insecure`). Needed for self-signed
+# certs; ignored when the scheme is http.
+s3_tls_skip_verify: false
+# Appended to every `mc` call. Empty unless we're on https with a cert mc
+# wouldn't trust anyway.
+mc_opts: "{{ '--insecure' if (s3_scheme == 'https' and s3_tls_skip_verify | bool) else '' }}"
+
+# --- Per-backend INPUTS -------------------------------------------------
+# Each backend takes its own <backend>_s3_* inputs and maps them onto the
+# neutral contract keys in vars/storage_<backend>.yml. Only the block for the
+# active s3_backend is used.
+
+# backend: aistor
+# http|https. https makes the operator issue a self-signed cert (autoCert),
+# so it needs s3_tls_skip_verify: true as well.
+aistor_s3_scheme: http
+
+# backend: seaweedfs
+# http only for now — the chart's TLS wiring is not implemented in this repo.
+# The role asserts this rather than silently serving plaintext on an https URL.
+seaweedfs_s3_scheme: http
+
+# backend: external
+# An S3 store this playbook does NOT manage (existing MinIO, StorageGRID, ECS,
+# Rook/Ceph RGW, real AWS S3). Buckets in s3_buckets must already exist unless
+# external_s3_create_buckets is true. Credentials go in the vaulted secrets.yml.
+external_s3_scheme: http
+external_s3_host: CHANGE_ME
+external_s3_port: 443
+external_s3_force_path_style: true     # false for real AWS S3
+external_s3_namespace: lab-s3          # ns for the mc pods + credentials Secret
+
+# --- CloudNativePG (Quickwit metastore) ---
+cnpg_namespace: quickwitdb
+cnpg_cluster_name: quickwit-postgres-cluster
+cnpg_instances: 3                # single-node lab: all 3 share one disk
+cnpg_storage_size: 1Gi
+cnpg_backup_bucket: pgsqlbackups
+cnpg_backup_schedule: "0 */6 * * *"
+
+# --- Quickwit (upstream OSS) ---
+quickwit_namespace: quickwit
+quickwit_data_bucket: quickwitdata
+quickwit_index_root_uri: "s3://quickwitdata/indexes"
+quickwit_indexer_pv_size: 5Gi
+
+# The index the lab seeds and that Grafana points at. Created by the chart's
+# bootstrap job (idempotent: `index describe || index create`).
+quickwit_index_id: lab-logs
+# Fields the Grafana datasource is told about. They must exist in the doc
+# mapping in roles/quickwit/templates/quickwit-values.yaml.j2.
+quickwit_log_message_field: body
+quickwit_log_level_field: severity_text
+
+# --- Grafana ---
+grafana_namespace: grafana
+# Grafana is reachable two ways on a single-node lab:
+#   http://<node_ip>/grafana            via Traefik on :80
+#   http://<node_ip>:30300/grafana      direct NodePort, bypasses Traefik
+# serve_from_sub_path is on, so the /grafana prefix is present on BOTH.
+grafana_subpath: /grafana
+grafana_nodeport: 30300
+grafana_storage_size: 2Gi

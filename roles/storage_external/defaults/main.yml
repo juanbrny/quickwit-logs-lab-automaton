@@ -1,0 +1,4 @@
+---
+# Most managed/external stores hand you pre-made buckets and a key that cannot
+# create more. Flip on only if the credentials are allowed to CreateBucket.
+external_s3_create_buckets: false

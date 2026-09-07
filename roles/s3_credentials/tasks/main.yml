@@ -1,0 +1,32 @@
+---
+# RESOLVE the credentials for downstream roles (cnpg, byoc_logs, verify).
+# If the storage role ran in this play, the facts are already set. If not
+# (e.g. `-t byoc` on an existing deployment), read them back from the Secret
+# the storage role published.
+- name: Read the published S3 credentials Secret
+  when: s3_access_key is not defined
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Secret
+    name: "{{ s3_credentials_secret }}"
+    namespace: "{{ s3_namespace }}"
+  register: s3_creds_secret
+
+- name: Resolve credentials from the Secret
+  when:
+    - s3_access_key is not defined
+    - s3_creds_secret.resources | default([]) | length > 0
+  ansible.builtin.set_fact:
+    s3_access_key: "{{ s3_creds_secret.resources[0].data.AWS_ACCESS_KEY_ID | b64decode }}"
+    s3_secret_key: "{{ s3_creds_secret.resources[0].data.AWS_SECRET_ACCESS_KEY | b64decode }}"
+
+- name: Assert credentials are available
+  ansible.builtin.assert:
+    that:
+      - s3_access_key is defined
+      - s3_secret_key is defined
+    fail_msg: >-
+      No S3 credentials. The storage role publishes them; either run the
+      storage tag too (-t storage,{{ ansible_run_tags | join(',') }}) or make
+      sure Secret {{ s3_credentials_secret }} exists in {{ s3_namespace }}.
+    quiet: true

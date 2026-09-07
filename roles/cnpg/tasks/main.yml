@@ -1,0 +1,62 @@
+---
+- name: Add CloudNativePG helm repo
+  kubernetes.core.helm_repository:
+    name: cnpg
+    repo_url: "{{ cnpg_helm_repo }}"
+    force_update: true
+
+- name: Install CloudNativePG operator
+  kubernetes.core.helm:
+    name: cnpg
+    chart_ref: "{{ charts.cnpg.chart }}"
+    chart_version: "{{ charts.cnpg.version }}"
+    release_namespace: "{{ cnpg_operator_namespace }}"
+    create_namespace: true
+    update_repo_cache: true
+    wait: true              # GATE: operator ready before applying a Cluster
+    wait_timeout: 180s
+
+- name: Create database namespace
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ cnpg_namespace }}"
+
+- name: Create S3 credentials secret for WAL archiving
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: s3-creds
+        namespace: "{{ cnpg_namespace }}"
+      type: Opaque
+      stringData:
+        AWS_ACCESS_KEY_ID: "{{ s3_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ s3_secret_key }}"
+
+- name: Apply Postgres Cluster with WAL archiving to S3
+  kubernetes.core.k8s:
+    template: cluster.yaml.j2
+  retries: 5              # CNPG webhook can lag the operator deployment
+  delay: 10
+  register: cnpg_cluster
+  until: cnpg_cluster is succeeded
+
+- name: Apply hourly ScheduledBackup
+  kubernetes.core.k8s:
+    template: scheduledbackup.yaml.j2
+
+- name: Wait for the Postgres cluster to be Ready (can take minutes)
+  kubernetes.core.k8s_info:
+    api_version: postgresql.cnpg.io/v1
+    kind: Cluster
+    name: "{{ cnpg_cluster_name }}"
+    namespace: "{{ cnpg_namespace }}"
+    wait: true
+    wait_condition:
+      type: Ready
+      status: "True"
+    wait_timeout: 600

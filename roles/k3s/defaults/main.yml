@@ -1,0 +1,4 @@
+---
+k3s_version: "v1.35.6+k3s1"   # pinned one release behind latest, on purpose
+k3s_install_dir: /root/_k3s_
+k3s_disable_firewalld: true   # lab only — simplifies NodePort access

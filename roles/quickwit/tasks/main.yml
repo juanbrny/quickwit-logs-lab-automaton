@@ -1,0 +1,75 @@
+---
+- name: Create Quickwit namespace
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ quickwit_namespace }}"
+
+# --- Metastore URI: pull CNPG's ready-made URI (password already
+# --- URL-encoded), FQDN-ify the -rw host, normalize the scheme.
+- name: Read CNPG app secret
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Secret
+    name: "{{ cnpg_cluster_name }}-app"
+    namespace: "{{ cnpg_namespace }}"
+  register: cnpg_app_secret
+  failed_when: cnpg_app_secret.resources | length == 0
+
+- name: Build cross-namespace metastore URI
+  ansible.builtin.set_fact:
+    qw_metastore_uri: >-
+      {{ (cnpg_app_secret.resources[0].data.uri | b64decode)
+         | replace('@' + rw_short + ':', '@' + rw_short + '.' + cnpg_namespace + '.svc.cluster.local:')
+         | regex_replace('^postgresql://', 'postgres://') }}
+  vars:
+    rw_short: "{{ cnpg_app_secret.resources[0].data.host | b64decode }}"
+
+# Only the metastore pods talk to PostgreSQL directly. Everything else reaches
+# the metastore over gRPC, so this secret must NOT be mounted globally.
+- name: Create metastore URI secret
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: "{{ quickwit_metastore_secret }}"
+        namespace: "{{ quickwit_namespace }}"
+      type: Opaque
+      stringData:
+        QW_METASTORE_URI: "{{ qw_metastore_uri }}"
+
+- name: Create S3 credentials secret for Quickwit components
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: "{{ quickwit_s3_secret }}"
+        namespace: "{{ quickwit_namespace }}"
+      type: Opaque
+      stringData:
+        AWS_ACCESS_KEY_ID: "{{ s3_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ s3_secret_key }}"
+
+- name: Add Quickwit helm repo
+  kubernetes.core.helm_repository:
+    name: "{{ charts.quickwit.repo_name }}"
+    repo_url: "{{ charts.quickwit.repo_url }}"
+    force_update: true
+
+# The seed index is created by a post-install/post-upgrade helm hook Job
+# (`quickwit index describe || quickwit index create`), so this is re-runnable.
+- name: Install Quickwit chart
+  kubernetes.core.helm:
+    name: "{{ quickwit_release_name }}"
+    chart_ref: "{{ charts.quickwit.chart }}"
+    chart_version: "{{ charts.quickwit.version }}"
+    release_namespace: "{{ quickwit_namespace }}"
+    update_repo_cache: true
+    values: "{{ lookup('template', 'quickwit-values.yaml.j2') | from_yaml }}"
+
+- name: Apply ingress for flavor '{{ ingress_flavor }}'
+  ansible.builtin.include_tasks: "ingress_{{ ingress_flavor }}.yml"

@@ -1,0 +1,17 @@
+---
+seaweedfs_helm_repo: https://seaweedfs.github.io/seaweedfs/helm
+seaweedfs_chart_version: "4.39.0"     # pin: chart derives service names
+seaweedfs_release_name: seaweedfs
+
+# Admin identity used ONLY for provisioning (bucket creation). The app key
+# the rest of the stack uses is s3_access_key / s3_secret_key from the
+# contract, scoped to s3_buckets by the identities config.
+seaweedfs_admin_access_key: "swadmin0000000000000"
+# seaweedfs_admin_secret_key comes from the vaulted secrets.yml
+
+# Single-node lab sizing. Every component gets a PVC on the cluster's default
+# storage class — the chart's hostPath defaults (/ssd, /storage) do not exist
+# on a stock openSUSE node.
+seaweedfs_master_size: 1Gi
+seaweedfs_volume_size: 30Gi
+seaweedfs_filer_size: 5Gi

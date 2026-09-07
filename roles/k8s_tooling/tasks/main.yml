@@ -1,0 +1,66 @@
+---
+# The kubernetes.core modules execute on whichever host runs the task, so when
+# that host is the node it needs helm, the python kubernetes client, and (for
+# the mc probes) kubectl. k3s ships kubectl, so we just expose it on PATH.
+- name: Ensure base tooling is present (python, pip, tar for unarchive)
+  ansible.builtin.package:
+    name:
+      - python3
+      - python3-pip
+      - tar
+      - gzip
+    state: present
+
+- name: Install the python kubernetes client (needed by kubernetes.core)
+  ansible.builtin.pip:
+    name:
+      - kubernetes>=24.2.0
+      - PyYAML
+    extra_args: "{{ '--break-system-packages' if k8s_tooling_pip_break_system_packages else omit }}"
+
+- name: Check for helm
+  ansible.builtin.command: helm version --short
+  register: helm_check
+  changed_when: false
+  failed_when: false
+
+- name: Install helm
+  when: helm_check.rc != 0
+  block:
+    - name: Download helm
+      ansible.builtin.get_url:
+        url: "https://get.helm.sh/helm-{{ helm_version }}-linux-amd64.tar.gz"
+        dest: /tmp/helm.tar.gz
+        mode: "0640"
+
+    - name: Unpack helm to /usr/local/bin
+      ansible.builtin.unarchive:
+        src: /tmp/helm.tar.gz
+        dest: /tmp
+        remote_src: true
+
+    - name: Install the helm binary
+      ansible.builtin.copy:
+        src: /tmp/linux-amd64/helm
+        dest: /usr/local/bin/helm
+        mode: "0755"
+        remote_src: true
+
+    # sudo's secure_path often omits /usr/local/bin, so the helm modules (run
+    # under become) can't find it there. Symlink into /usr/bin, which is always
+    # on secure_path.
+    - name: Expose helm on the secure_path
+      ansible.builtin.file:
+        src: /usr/local/bin/helm
+        dest: /usr/bin/helm
+        state: link
+        force: true
+
+# k3s installs its own kubectl but does not always symlink it. Target /usr/bin
+# (on sudo's secure_path) so it's found under become, not /usr/local/bin.
+- name: Expose kubectl on PATH
+  ansible.builtin.file:
+    src: /usr/local/bin/k3s
+    dest: /usr/bin/kubectl
+    state: link
+    force: true

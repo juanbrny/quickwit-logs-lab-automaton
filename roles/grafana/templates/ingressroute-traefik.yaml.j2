@@ -1,0 +1,20 @@
+# Traefik v3 IngressRoute for Grafana on the shared :80 entrypoint.
+# The Quickwit IngressRoute owns a PathPrefix(`/`) catch-all at priority 1, so
+# this route only needs to outrank it. Both live in their own namespace and
+# reference a Service in that same namespace, so no cross-namespace permission
+# is required from Traefik.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ grafana_fullname }}
+  namespace: {{ grafana_namespace }}
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: PathPrefix(`{{ grafana_subpath }}`)
+      kind: Rule
+      priority: 500
+      services:
+        - name: {{ grafana_fullname }}
+          port: 80

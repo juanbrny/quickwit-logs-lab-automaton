@@ -1,0 +1,5 @@
+---
+# Only used when k8s_control is the node itself (AWS/SSM). On a workstation you
+# already have these.
+# helm_version now lives in group_vars/all/versions.yml
+k8s_tooling_pip_break_system_packages: true   # PEP668 distros (AL2023, Ubuntu 24)

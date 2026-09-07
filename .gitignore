@@ -1,0 +1,14 @@
+# Real secrets and environment-specific config: templates are committed instead.
+group_vars/all/secrets.yml
+inventory/hosts.yml
+inventory/hosts-ssm.yml
+.vault_pass
+
+local_data_backup/
+
+# Fetched from the node at runtime
+.kubeconfig/
+
+*.retry
+*.patch
+*.tar.gz

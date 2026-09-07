@@ -1,0 +1,26 @@
+# minimal overrides only — verify key paths against
+# `helm show values minio/aistor-objectstore` when bumping chart versions.
+objectStore:
+  certificates:
+    # Derived from the contract's scheme so the deployment and the endpoint URL
+    # cannot disagree. https => operator issues a self-signed cert (autoCert),
+    # which also needs s3_tls_skip_verify: true for mc to accept it.
+    disableAutoCert: {{ 'true' if s3_scheme == 'http' else 'false' }}
+  pools:
+    # REQUIRED: spec.pools is a server-side-apply map-list keyed by "name".
+    # Omitting it fails the typed patch with "omits all key fields [name]".
+    # Overriding the list replaces the chart default entirely, name included.
+    - name: pool-0
+      servers: 1               # single node (also an eval-license limit)
+      volumesPerServer: 1      # ONE drive -> no erasure set to degrade -> green
+  services:
+    console:
+      serviceType: NodePort
+      nodePort: {{ aistor_console_nodeport }}
+    minio:
+      serviceType: NodePort
+      nodePort: {{ s3_nodeport }}
+secrets:
+  name: {{ aistor_release_name }}-creds
+  accessKey: "{{ aistor_root_user }}"
+  secretKey: "{{ aistor_root_password }}"

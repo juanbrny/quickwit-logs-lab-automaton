@@ -1,0 +1,3 @@
+---
+cnpg_helm_repo: https://cloudnative-pg.github.io/charts
+cnpg_operator_namespace: cnpg-system

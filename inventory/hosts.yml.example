@@ -1,0 +1,30 @@
+---
+# TEMPLATE — copy to inventory/hosts.yml:
+#   cp inventory/hosts.yml.example inventory/hosts.yml
+#
+# DEFAULT MODEL: self-contained lab. The Kubernetes work (helm, kubectl,
+# kubernetes.core) runs ON THE NODE, reached over ordinary SSH. Your
+# workstation only needs port 22 — no inbound 6443, which is what makes this
+# work for a node behind a public IP, a NAT, or a corporate SG.
+#
+# The trick: k8s_control points at the SAME host as lab_node (via a YAML
+# anchor, so they can't drift). That flips k8s_control_on_node true, so play 2
+# executes on the instance against 127.0.0.1:6443, and the k8s_tooling role
+# installs helm + the python client there. become is used throughout (assumes
+# a non-root sudo user like ec2-user; harmless if you are root).
+#
+# For the LAN model (workstation drives the cluster) see hosts-lan.yml.example.
+# The real hosts.yml is gitignored.
+all:
+  children:
+    lab_node:
+      hosts:
+        # Use the node's real hostname as the inventory name where you can.
+        byoc-lab-node: &node
+          ansible_host: 10.0.0.10
+          ansible_user: ec2-user          # non-root sudo user
+          ansible_become: true
+
+    k8s_control:
+      hosts:
+        byoc-lab-node: *node              # SAME host — runs k8s work on the node

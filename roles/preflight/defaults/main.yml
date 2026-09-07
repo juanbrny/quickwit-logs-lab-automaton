@@ -1,0 +1,7 @@
+---
+# Raw VM spec required (matches the runbook's target: 20 vCPU / 64 GB / 100 GB).
+preflight_required_vcpu: 20
+preflight_required_ram_gb: 64
+preflight_required_disk_gb: 100
+preflight_disk_path: /
+preflight_skip: false          # -e preflight_skip=true to bypass

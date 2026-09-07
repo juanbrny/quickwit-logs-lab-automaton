@@ -1,0 +1,7 @@
+---
+# k3s ships Traefik. The chart's own ingress assumes an nginx IngressClass with
+# nginx-specific regex annotations, so we disable it in values and route with an
+# IngressRoute CRD instead.
+- name: Apply Traefik IngressRoute for Quickwit
+  kubernetes.core.k8s:
+    template: ingressroute-traefik.yaml.j2

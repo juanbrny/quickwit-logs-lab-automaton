@@ -1,0 +1,14 @@
+---
+# CONTRACT for an S3 store this playbook does NOT manage — an existing MinIO,
+# StorageGRID, ECS, Rook/Ceph RGW, or real AWS S3. Nothing is provisioned; the
+# playbook validates the store and consumes it.
+#
+# Set external_s3_* in group_vars/all/main.yml (endpoint) and the vaulted
+# secrets.yml (credentials). Everything below is derived.
+s3_namespace: "{{ external_s3_namespace }}"   # k8s ns for mc pods + the creds Secret
+s3_scheme: "{{ external_s3_scheme }}"
+s3_host: "{{ external_s3_host }}"
+s3_port: "{{ external_s3_port }}"
+s3_endpoint: "{{ s3_scheme }}://{{ s3_host }}:{{ s3_port }}"
+s3_endpoint_external: "{{ s3_endpoint }}"     # same address from inside or out
+s3_force_path_style: "{{ external_s3_force_path_style }}"

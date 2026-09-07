@@ -1,0 +1,41 @@
+---
+- name: Create Grafana namespace
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ grafana_namespace }}"
+
+# Kept out of the helm values so the password never lands in the rendered
+# release manifest that `helm get values` prints back.
+- name: Create Grafana admin credentials secret
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: "{{ grafana_admin_secret }}"
+        namespace: "{{ grafana_namespace }}"
+      type: Opaque
+      stringData:
+        admin-user: "{{ grafana_admin_user }}"
+        admin-password: "{{ grafana_admin_password }}"
+
+- name: Add Grafana community helm repo
+  kubernetes.core.helm_repository:
+    name: "{{ charts.grafana.repo_name }}"
+    repo_url: "{{ charts.grafana.repo_url }}"
+    force_update: true
+
+- name: Install Grafana chart with the Quickwit datasource plugin
+  kubernetes.core.helm:
+    name: "{{ grafana_release_name }}"
+    chart_ref: "{{ charts.grafana.chart }}"
+    chart_version: "{{ charts.grafana.version }}"
+    release_namespace: "{{ grafana_namespace }}"
+    update_repo_cache: true
+    values: "{{ lookup('template', 'grafana-values.yaml.j2') | from_yaml }}"
+
+- name: Apply ingress for flavor '{{ ingress_flavor }}'
+  ansible.builtin.include_tasks: "ingress_{{ ingress_flavor }}.yml"

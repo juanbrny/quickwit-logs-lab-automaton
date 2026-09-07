@@ -1,0 +1,32 @@
+# Backend-agnostic verification: PUT -> STAT -> GET -> DELETE with the APP key
+# in every contract bucket, plus a scope check. Consumed by every storage_*
+# role via lookup('template', playbook_dir + '/templates/mc_verify.sh.j2').
+set -u
+STAMP=$(date +%s); FAIL=0
+echo "probe $STAMP" > /tmp/probe.txt
+{% for bucket in s3_buckets %}
+B={{ bucket }}
+echo "=== $B ==="
+if mc {{ mc_opts }} cp /tmp/probe.txt s3/$B/healthcheck/probe-$STAMP.txt >/dev/null 2>&1; then
+  echo "  PUT    ok"
+  if mc {{ mc_opts }} stat s3/$B/healthcheck/probe-$STAMP.txt >/dev/null 2>&1; then
+    echo "  STAT   ok"; else echo "  STAT   FAIL"; FAIL=1; fi
+  OUT=$(mc {{ mc_opts }} cat s3/$B/healthcheck/probe-$STAMP.txt 2>/dev/null)
+  case "$OUT" in
+    "probe $STAMP") echo "  GET    ok (content matches)";;
+    *)              echo "  GET    FAIL (got: $OUT)"; FAIL=1;;
+  esac
+  if mc {{ mc_opts }} rm s3/$B/healthcheck/probe-$STAMP.txt >/dev/null 2>&1; then
+    echo "  DELETE ok"; else echo "  DELETE FAIL"; FAIL=1; fi
+else
+  echo "  PUT    FAIL"; FAIL=1
+fi
+{% endfor %}
+echo; echo "=== scope check (write outside the contract buckets should be denied) ==="
+if mc {{ mc_opts }} cp /tmp/probe.txt s3/not-allowed-$STAMP/x.txt >/dev/null 2>&1; then
+  echo "  WARN: key is NOT scoped — wrote outside!"; FAIL=1
+else
+  echo "  ok: blocked outside {{ s3_buckets | join('/') }}"
+fi
+echo
+[ "$FAIL" -eq 0 ] && echo "RESULT: PASS" || echo "RESULT: FAIL"

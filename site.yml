@@ -1,0 +1,148 @@
+---
+# Full environment: node prep + k8s distro, then everything in-cluster.
+# Re-runnable end to end. Useful tag subsets:
+#   ansible-playbook site.yml -t distro
+#   ansible-playbook site.yml -t storage,database
+#   ansible-playbook site.yml -t quickwit,grafana,verify
+
+- name: Provision the k8s distro on the lab node
+  hosts: lab_node
+  become: true
+  tasks:
+    - name: Preflight — VM meets the documented spec
+      ansible.builtin.include_role:
+        name: preflight
+        apply:
+          tags: [preflight]
+      tags: [preflight]
+
+    # include_role (not roles:) so the role name can come from group_vars
+    - name: Run distro role '{{ k8s_distro }}'
+      ansible.builtin.include_role:
+        name: "{{ k8s_distro }}"
+        apply:
+          tags: [distro]
+      tags: [distro]
+
+# Runs on whichever host the inventory puts in k8s_control:
+#   the node    -> everything executes on the instance (default; SSH or SSM,
+#                  no inbound 6443 needed)
+#   localhost   -> workstation drives the cluster over the network (LAN only)
+- name: Deploy the Quickwit prerequisite stack + Quickwit + Grafana
+  hosts: k8s_control
+  gather_facts: true
+  # become is needed to read /etc/rancher/k3s/k3s.yaml and run helm/kubectl as a
+  # non-root sudo user (ec2-user etc). Harmless no-op when on-node is false or
+  # the user is already root.
+  become: "{{ k8s_control_on_node }}"
+  environment:
+    KUBECONFIG: "{{ kubeconfig_path }}"
+    K8S_AUTH_KUBECONFIG: "{{ kubeconfig_path }}"
+  pre_tasks:
+    - name: Load the storage backend contract (endpoint, namespace, quirks)
+      ansible.builtin.include_vars: "vars/storage_{{ s3_backend }}.yml"
+      tags: [always]
+
+    - name: Look for the secrets file
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/group_vars/all/secrets.yml"
+      register: secrets_file
+      delegate_to: localhost
+      become: false
+      tags: [always]
+
+    - name: Explain how to create it if missing
+      ansible.builtin.assert:
+        that: secrets_file.stat.exists
+        fail_msg: >-
+          group_vars/all/secrets.yml does not exist. Create it from the template:
+          cp group_vars/all/secrets.yml.example group_vars/all/secrets.yml &&
+          $EDITOR group_vars/all/secrets.yml &&
+          ansible-vault encrypt group_vars/all/secrets.yml
+        quiet: true
+      tags: [always]
+
+    - name: Assert the inventory defines exactly one lab node
+      ansible.builtin.assert:
+        that:
+          - groups['lab_node'] | default([]) | length == 1
+        fail_msg: >-
+          inventory/hosts.yml must define exactly one host under lab_node —
+          node_ip is derived from it. If you have not created it yet:
+          cp inventory/hosts.yml.example inventory/hosts.yml
+      tags: [always]
+
+    - name: Assert the inventory defines exactly one k8s_control host
+      ansible.builtin.assert:
+        that:
+          - groups['k8s_control'] | default([]) | length == 1
+        fail_msg: >-
+          inventory must define exactly one host under k8s_control. For a
+          self-contained lab (recommended) point it at the SAME host as
+          lab_node — the k8s work then runs on the node over SSH, needing only
+          port 22. Use 'localhost' only on a LAN where your workstation can
+          reach the API server on :6443.
+      tags: [always]
+
+    - name: Refuse to run with placeholder secrets
+      ansible.builtin.assert:
+        that:
+          - grafana_admin_password != "CHANGE_ME"
+          - s3_app_access_key != "CHANGE_ME" or s3_backend == "external"
+          - s3_app_secret_key != "CHANGE_ME" or s3_backend == "external"
+          - aistor_license != "CHANGE_ME" or s3_backend != "aistor"
+          - seaweedfs_admin_secret_key != "CHANGE_ME" or s3_backend != "seaweedfs"
+        fail_msg: >-
+          Placeholder values still present. Fill them in with:
+          ansible-vault edit group_vars/all/secrets.yml
+      tags: [always]
+  tasks:
+    - name: Install kubectl/helm/python tooling on the node
+      when: k8s_control_on_node | bool
+      ansible.builtin.include_role:
+        name: k8s_tooling
+        apply:
+          tags: [tooling]
+      tags: [tooling]
+
+    - name: S3 storage backend '{{ s3_backend }}'
+      ansible.builtin.include_role:
+        name: "storage_{{ s3_backend }}"
+        apply:
+          tags: [storage]
+      tags: [storage]
+
+    - name: Resolve S3 credentials published by the storage backend
+      ansible.builtin.include_role:
+        name: s3_credentials
+        apply:
+          tags: [database, quickwit, verify]
+      tags: [database, quickwit, verify]
+
+    - name: PostgreSQL (CloudNativePG) — Quickwit metastore, with WAL archiving
+      ansible.builtin.include_role:
+        name: cnpg
+        apply:
+          tags: [database]
+      tags: [database]
+
+    - name: Quickwit (upstream OSS) + ingress
+      ansible.builtin.include_role:
+        name: quickwit
+        apply:
+          tags: [quickwit]
+      tags: [quickwit]
+
+    - name: Grafana + the Quickwit datasource plugin
+      ansible.builtin.include_role:
+        name: grafana
+        apply:
+          tags: [grafana]
+      tags: [grafana]
+
+    - name: End-to-end verification
+      ansible.builtin.include_role:
+        name: verify
+        apply:
+          tags: [verify]
+      tags: [verify]

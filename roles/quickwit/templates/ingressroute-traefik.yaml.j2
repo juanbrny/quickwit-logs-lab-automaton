@@ -1,0 +1,49 @@
+# Traefik v3 IngressRoute — replaces the chart's nginx Ingress.
+# Route intent (mirrors the chart's own ingress spec):
+#   indexer   <- ingest paths (/api/v1/{index}/ingest, ES _bulk)
+#   metastore <- /api/v1/indexes
+#   searcher  <- everything else, including the /ui console and ES _search
+# Higher priority wins; the catch-all is pinned to 1 so it always loses.
+# Grafana owns {{ grafana_subpath }} from its own IngressRoute at a higher
+# priority, so it is not shadowed by the catch-all below.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ quickwit_fullname }}-internal
+  namespace: {{ quickwit_namespace }}
+spec:
+  entryPoints:
+    - web                      # k3s Traefik HTTP entrypoint (:80)
+  routes:
+    # Ingest V2 is the default in 0.9 and serves this path. The old
+    # /api/v1/{index}/ingest-v2 route was removed in 0.9, so it is not routed.
+    - match: PathRegexp(`^/api/v1/[^/]+/ingest$`)
+      kind: Rule
+      priority: 300
+      services:
+        - name: {{ quickwit_fullname }}-indexer
+          port: rest
+    - match: PathRegexp(`^/api/v1/_elastic/_?bulk$`)
+      kind: Rule
+      priority: 300
+      services:
+        - name: {{ quickwit_fullname }}-indexer
+          port: rest
+    - match: PathRegexp(`^/api/v1/_elastic/[^/]+/_bulk$`)
+      kind: Rule
+      priority: 300
+      services:
+        - name: {{ quickwit_fullname }}-indexer
+          port: rest
+    - match: PathPrefix(`/api/v1/indexes`)
+      kind: Rule
+      priority: 200
+      services:
+        - name: {{ quickwit_fullname }}-metastore
+          port: rest
+    - match: PathPrefix(`/`)
+      kind: Rule
+      priority: 1
+      services:
+        - name: {{ quickwit_fullname }}-searcher
+          port: rest

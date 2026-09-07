@@ -1,0 +1,13 @@
+---
+profile: production      # currently passes; keeps the bar high
+
+exclude_paths:
+  - .github/
+  - .kubeconfig/
+
+skip_list:
+  # kubectl-via-command is deliberate: several checks (ObjectStore health,
+  # `kubectl run` throwaway mc pods) have no k8s module equivalent.
+  - command-instead-of-module
+  # Vaulted secrets.yml is not present in CI, so vars resolve at runtime only.
+  - var-naming[no-role-prefix]

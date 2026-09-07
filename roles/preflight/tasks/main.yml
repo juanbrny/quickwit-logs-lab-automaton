@@ -1,0 +1,63 @@
+---
+# Runs on the node, from gathered facts, BEFORE anything is installed.
+# NOTE on RAM: /proc/meminfo always reports a bit less than the nominal spec
+# (firmware/kernel reserve ~1-3%), so a 64 GB VM shows ~62-63 GB. The check
+# allows 5% slack — it is catching "wrong VM size", not counting bytes.
+- name: Preflight — VM meets the documented spec
+  when: not (preflight_skip | bool)
+  block:
+    - name: Free disk on {{ preflight_disk_path }}
+      ansible.builtin.command: df -PBG {{ preflight_disk_path }}
+      register: pf_df
+      changed_when: false
+
+    - name: Report and assert
+      vars:
+        pf_vcpu: "{{ ansible_processor_vcpus }}"
+        pf_ram_gb: "{{ (ansible_memtotal_mb / 1024) | round(1) }}"
+        pf_disk_gb: "{{ pf_df.stdout_lines[1].split()[3] | regex_replace('G$', '') }}"
+      block:
+        - name: Show what the node has
+          ansible.builtin.debug:
+            msg: >-
+              {{ inventory_hostname }}: {{ pf_vcpu }} vCPU,
+              {{ pf_ram_gb }} GB RAM, {{ pf_disk_gb }} GB free on
+              {{ preflight_disk_path }} — required:
+              {{ preflight_required_vcpu }} / {{ preflight_required_ram_gb }} /
+              {{ preflight_required_disk_gb }}
+
+        - name: Assert the VM is big enough
+          ansible.builtin.assert:
+            that:
+              - (pf_vcpu | int) >= (preflight_required_vcpu | int)
+              - (pf_ram_gb | float) >= (preflight_required_ram_gb | float * 0.95)
+              - (pf_disk_gb | int) >= (preflight_required_disk_gb | int)
+            fail_msg: >-
+              VM too small: {{ pf_vcpu }} vCPU / {{ pf_ram_gb }} GB RAM /
+              {{ pf_disk_gb }} GB free. Need {{ preflight_required_vcpu }} /
+              {{ preflight_required_ram_gb }} / {{ preflight_required_disk_gb }}.
+              Resize it, or bypass with -e preflight_skip=true (pods will sit
+              Pending if the requests don't fit).
+            success_msg: "VM meets spec."
+
+# Every external version must be explicitly pinned. Fail on any CONFIRM_ME
+# placeholder or floating tag so the "stable base" can't silently drift.
+- name: Assert all component versions are pinned
+  vars:
+    _chart_versions: "{{ charts.values() | map(attribute='version') | list }}"
+  ansible.builtin.assert:
+    that:
+      - "'CONFIRM_ME' not in _chart_versions"
+      - k3s_version is defined and k3s_version | length > 0
+      - "':latest' not in mc_image"
+      - mc_image is defined and mc_image | length > 0
+      - quickwit_image_tag is defined and quickwit_image_tag | length > 0
+      - quickwit_image_tag != "latest"
+      - grafana_quickwit_plugin_version is defined
+      - grafana_quickwit_plugin_version | length > 0
+    fail_msg: >-
+      Unpinned or unconfirmed versions in group_vars/all/versions.yml.
+      Fill every CONFIRM_ME (helm list -A) and make sure mc_image and
+      quickwit_image_tag are fixed tags, not :latest.
+    success_msg: "All component versions are pinned."
+  tags: [always]

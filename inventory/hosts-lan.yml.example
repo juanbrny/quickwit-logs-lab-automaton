@@ -1,0 +1,21 @@
+---
+# TEMPLATE for the LAN-only model (workstation drives the cluster):
+#   cp inventory/hosts-lan.yml.example inventory/hosts.yml
+#
+# Use this ONLY when your workstation can reach the node's Kubernetes API on
+# :6443 directly — i.e. same LAN, VPN, or an SSH tunnel you manage. If the node
+# is behind a public IP or a locked-down SG, use the default hosts.yml.example
+# (on-node execution) instead; it needs only port 22.
+all:
+  children:
+    lab_node:
+      hosts:
+        byoc-lab-node:
+          ansible_host: 10.0.0.10
+          ansible_user: root
+
+    k8s_control:
+      hosts:
+        localhost:
+          ansible_connection: local
+          ansible_python_interpreter: "{{ ansible_playbook_python }}"

@@ -1,0 +1,41 @@
+# Pinning the fullname makes the S3 service name deterministic
+# ("{fullname}-s3") instead of a function of the release name — the exact
+# class of drift that broke the AIStor backend.
+fullnameOverride: seaweedfs
+
+master:
+  enabled: true
+  replicas: 1
+  defaultReplication: "000"     # single node: no replication
+  data:
+    type: persistentVolumeClaim
+    size: {{ seaweedfs_master_size }}
+    storageClass: {{ default_storage_class }}
+
+volume:
+  enabled: true
+  replicas: 1
+  dataDirs:
+    - name: data1
+      type: persistentVolumeClaim
+      size: {{ seaweedfs_volume_size }}
+      storageClass: {{ default_storage_class }}
+      maxVolumes: 0
+
+filer:
+  enabled: true
+  replicas: 1
+  data:                          # embedded leveldb2 metadata store — lab only
+    type: persistentVolumeClaim
+    size: {{ seaweedfs_filer_size }}
+    storageClass: {{ default_storage_class }}
+
+s3:
+  enabled: true                  # standalone S3 gateway (not filer.s3)
+  replicas: 1
+  port: {{ s3_port }}
+  enableAuth: true
+  existingConfigSecret: seaweedfs-s3-identities
+  service:
+    type: NodePort
+    nodePort: {{ s3_nodeport }}

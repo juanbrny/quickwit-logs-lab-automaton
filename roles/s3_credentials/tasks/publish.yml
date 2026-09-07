@@ -1,0 +1,28 @@
+---
+# Called BY a storage role once it knows the app credentials, whether it chose
+# them (aistor/seaweedfs), was handed them (external), or was given them by the
+# backend (a future rook role reads them from the CephObjectStoreUser secret).
+#
+# Publishes them two ways:
+#   1. facts        — for the rest of THIS run
+#   2. a k8s Secret — so a later partial run (-t byoc) can resolve them without
+#                     re-running the storage role
+#
+# Callers pass s3_publish_access_key / s3_publish_secret_key.
+- name: Publish S3 credentials as facts
+  ansible.builtin.set_fact:
+    s3_access_key: "{{ s3_publish_access_key }}"
+    s3_secret_key: "{{ s3_publish_secret_key }}"
+
+- name: Publish S3 credentials as a Secret
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: "{{ s3_credentials_secret }}"
+        namespace: "{{ s3_namespace }}"
+      type: Opaque
+      stringData:
+        AWS_ACCESS_KEY_ID: "{{ s3_publish_access_key }}"
+        AWS_SECRET_ACCESS_KEY: "{{ s3_publish_secret_key }}"

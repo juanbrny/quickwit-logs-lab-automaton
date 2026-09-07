@@ -1,0 +1,45 @@
+---
+# TEMPLATE for AWS with SSM instead of SSH:
+#   cp inventory/hosts-ssm.yml.example inventory/hosts.yml
+#
+# Why this differs by more than a connection plugin: with SSH disabled, inbound
+# 6443 (kube API) and 80 (ingress) from your workstation are almost certainly
+# closed too. So k8s_control is THE NODE ITSELF — kubectl, helm and the
+# kubernetes.core modules all execute on the instance, over SSM. Nothing needs
+# to reach the instance from outside.
+#
+# Control-node prerequisites:
+#   pip install boto3
+#   aws CLI v2 + the session-manager-plugin
+#   ansible-galaxy collection install community.aws amazon.aws
+#
+# Instance prerequisites:
+#   - SSM Agent running (baked into AL2023/Ubuntu AMIs)
+#   - instance profile with AmazonSSMManagedInstanceCore
+#   - egress to the SSM endpoints (or VPC endpoints for ssm/ssmmessages/ec2messages)
+#   - egress for k3s/helm/container pulls, or a NAT/proxy
+#
+# The aws_ssm connection plugin ships files through an S3 bucket — it is not
+# optional. The instance profile needs read/write on it.
+all:
+  children:
+    lab_node:
+      hosts:
+        # Inventory name = the EC2 instance ID. There is no ansible_host.
+        i-0123456789abcdef0:
+          ansible_connection: community.aws.aws_ssm
+          ansible_aws_ssm_region: eu-west-1
+          ansible_aws_ssm_bucket_name: my-ansible-ssm-transfer-bucket
+          # SSM lands you as ssm-user; everything privileged uses become.
+          ansible_become: true
+          ansible_become_method: sudo
+
+    k8s_control:
+      hosts:
+        # SAME host as lab_node: run the Kubernetes work on the instance.
+        i-0123456789abcdef0:
+          ansible_connection: community.aws.aws_ssm
+          ansible_aws_ssm_region: eu-west-1
+          ansible_aws_ssm_bucket_name: my-ansible-ssm-transfer-bucket
+          ansible_become: true
+          ansible_become_method: sudo

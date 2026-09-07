@@ -1,0 +1,21 @@
+---
+quickwit_release_name: quickwit
+# fullnameOverride, so every Service name is deterministic instead of depending
+# on whether the release name happens to contain the chart name. Services are
+# <quickwit_fullname>-{indexer,searcher,metastore,control-plane,janitor}.
+quickwit_fullname: quickwit
+
+quickwit_indexer_replicas: 1
+quickwit_searcher_replicas: 1
+
+# Secrets created by this role.
+quickwit_metastore_secret: quickwit-metastore-uri
+quickwit_s3_secret: quickwit-s3-credentials
+
+# Small enough to co-exist with CNPG and the object store on one lab node.
+quickwit_indexer_memory_request: 1Gi
+quickwit_searcher_memory_request: 1Gi
+
+# Splits only become searchable after a commit. The 60s default makes a lab
+# feel broken; 10s is still well above the per-split overhead.
+quickwit_commit_timeout_secs: 10

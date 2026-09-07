@@ -1,0 +1,18 @@
+---
+# CONTRACT published by the aistor backend. Self-contained — see note in
+# vars/storage_seaweedfs.yml about why nothing here may reference role defaults.
+s3_namespace: primary-object-store
+# NOTE: two different names, NOT interchangeable —
+#   - the ObjectStore CR is named by OUR helm values ("myminio")
+#   - the Service the operator derives from it is named by the OPERATOR, and
+#     operator v6 renamed it from "myminio" to a static "minio".
+# DNS uses s3_service_name; `kubectl get objectstore` uses
+# aistor_objectstore_name (role default).
+s3_service_name: minio
+s3_scheme: "{{ aistor_s3_scheme }}"
+s3_port: 80
+s3_nodeport: 31001
+s3_host: "{{ s3_service_name }}.{{ s3_namespace }}.svc.cluster.local"
+s3_endpoint: "{{ s3_scheme }}://{{ s3_host }}:{{ s3_port }}"
+s3_endpoint_external: "{{ s3_scheme }}://{{ node_ip }}:{{ s3_nodeport }}"
+s3_force_path_style: true

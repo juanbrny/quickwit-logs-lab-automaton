@@ -1,0 +1,56 @@
+---
+name: ci
+
+"on":
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install tooling
+        run: |
+          pip install ansible-core ansible-lint yamllint jinja2 pyyaml
+          ansible-galaxy collection install -r requirements.yml
+
+      # CI has no inventory or secrets (both gitignored) — synthesise them so
+      # the playbook can be parsed. Values are throwaway.
+      - name: Materialise inventory + secrets from the committed templates
+        run: |
+          cp inventory/hosts.yml.example inventory/hosts.yml
+          sed 's/CHANGE_ME/ci-placeholder/g' \
+            group_vars/all/secrets.yml.example > group_vars/all/secrets.yml
+
+      - name: yamllint
+        run: yamllint .
+
+      - name: ansible-lint
+        run: ansible-lint
+
+      # Catches undefined vars, bad module args, dynamic role names that don't
+      # resolve — i.e. the failures that otherwise surface 10 minutes into a run.
+      - name: Playbook syntax check
+        run: ansible-playbook site.yml --syntax-check
+
+      # Every Jinja template must render for BOTH storage backends and produce
+      # valid YAML/JSON. This is the check that would have caught the hardcoded
+      # :9000 port and the missing `name: pool-0` map-list key.
+      - name: Render all templates for every backend
+        run: python3 ci/render_templates.py
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        # scan full history, not just the tip
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

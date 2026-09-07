@@ -1,0 +1,12 @@
+---
+grafana_release_name: grafana
+# fullnameOverride, so the Service name the IngressRoute targets is fixed.
+grafana_fullname: grafana
+
+grafana_admin_user: admin
+grafana_admin_secret: grafana-admin-credentials
+
+# uid of the provisioned datasource. The verify role probes
+# /api/datasources/uid/<uid>/health, so keep the two in step.
+grafana_datasource_uid: quickwit
+grafana_datasource_name: Quickwit
