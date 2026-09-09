@@ -167,6 +167,60 @@
   changed_when: false
   no_log: true
 
+# The MCP server refuses unauthenticated callers, so a 401 here still proves it
+# is listening and enforcing auth. Only "nothing answered" is a failure.
+- name: MCP server answers on the Traefik path
+  ansible.builtin.uri:
+    url: "http://{{ node_ip }}{{ grafana_mcp_subpath }}"
+    method: GET
+    status_code: [200, 400, 401, 405, 406]
+  register: mcp_http
+  retries: 12
+  delay: 10
+  until: mcp_http is succeeded
+  changed_when: false
+
+- name: MCP server answers on the NodePort
+  ansible.builtin.uri:
+    url: "http://{{ node_ip }}:{{ grafana_mcp_nodeport }}{{ grafana_mcp_subpath }}"
+    method: GET
+    status_code: [200, 400, 401, 405, 406]
+  register: mcp_np
+  retries: 6
+  delay: 10
+  until: mcp_np is succeeded
+  changed_when: false
+
+# A real MCP handshake with the caller token. This proves the token, the
+# transport and the Grafana service account all line up — an LLM client would
+# fail here if any of the three were wrong.
+- name: MCP initialize handshake succeeds with the caller token
+  ansible.builtin.uri:
+    url: "http://{{ node_ip }}{{ grafana_mcp_subpath }}"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ grafana_mcp_caller_token }}"
+      Content-Type: application/json
+      Accept: "application/json, text/event-stream"
+    body_format: json
+    body:
+      jsonrpc: "2.0"
+      id: 1
+      method: initialize
+      params:
+        protocolVersion: "2025-06-18"
+        capabilities: {}
+        clientInfo:
+          name: ansible-verify
+          version: "1.0"
+    status_code: [200]
+  register: mcp_init
+  retries: 12
+  delay: 10
+  until: mcp_init is succeeded
+  changed_when: false
+  no_log: true
+
 - name: All good
   ansible.builtin.debug:
     msg:
@@ -177,3 +231,5 @@
       - "Quickwit UI:        http://{{ node_ip }}/ui"
       - "Grafana:            http://{{ node_ip }}{{ grafana_subpath }}"
       - "Grafana (NodePort): http://{{ node_ip }}:{{ grafana_nodeport }}{{ grafana_subpath }}"
+      - "MCP endpoint:       http://{{ node_ip }}{{ grafana_mcp_subpath }}"
+      - "MCP (NodePort):     http://{{ node_ip }}:{{ grafana_mcp_nodeport }}{{ grafana_mcp_subpath }}"

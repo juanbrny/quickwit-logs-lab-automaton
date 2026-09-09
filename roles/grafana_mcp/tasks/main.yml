@@ -1,0 +1,122 @@
+---
+# The MCP server lives in the Grafana namespace on purpose: it talks to the
+# Grafana Service, and its Traefik IngressRoute must reference a Service in its
+# own namespace.
+
+- name: Wait for Grafana to answer before asking it for a token
+  ansible.builtin.uri:
+    url: "http://{{ node_ip }}{{ grafana_subpath }}/api/health"
+    method: GET
+    status_code: [200]
+  register: gf_up
+  retries: 12
+  delay: 10
+  until: gf_up is succeeded
+  changed_when: false
+
+- name: Look for existing MCP credentials
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Secret
+    name: "{{ grafana_mcp_secret }}"
+    namespace: "{{ grafana_mcp_namespace }}"
+  register: mcp_secret
+
+# A Grafana service account token is returned exactly once, at creation. If we
+# minted a new one on every run we would leak an orphaned token each time and
+# the pod would restart for no reason, so everything below is gated on the
+# Secret being absent.
+- name: Provision the Grafana service account and token
+  when: mcp_secret.resources | length == 0
+  block:
+    - name: Search for an existing service account
+      ansible.builtin.uri:
+        url: >-
+          http://{{ node_ip }}{{ grafana_subpath }}/api/serviceaccounts/search?query={{ grafana_mcp_sa_name }}
+        method: GET
+        url_username: "{{ grafana_admin_user }}"
+        url_password: "{{ grafana_admin_password }}"
+        force_basic_auth: true
+        status_code: [200]
+      register: sa_search
+      changed_when: false
+      no_log: "{{ not grafana_mcp_debug }}"
+
+    - name: Note the id if the service account already exists
+      ansible.builtin.set_fact:
+        grafana_mcp_sa_id: >-
+          {{ (sa_search.json.serviceAccounts | default([])
+              | selectattr('name', 'equalto', grafana_mcp_sa_name)
+              | map(attribute='id') | list | first) | default('', true) }}
+
+    - name: Create the service account
+      when: grafana_mcp_sa_id | length == 0
+      ansible.builtin.uri:
+        url: "http://{{ node_ip }}{{ grafana_subpath }}/api/serviceaccounts"
+        method: POST
+        url_username: "{{ grafana_admin_user }}"
+        url_password: "{{ grafana_admin_password }}"
+        force_basic_auth: true
+        body_format: json
+        body:
+          name: "{{ grafana_mcp_sa_name }}"
+          role: "{{ grafana_mcp_sa_role }}"
+          isDisabled: false
+        status_code: [200, 201]
+      register: sa_created
+      no_log: "{{ not grafana_mcp_debug }}"
+
+    - name: Settle on the service account id
+      ansible.builtin.set_fact:
+        grafana_mcp_sa_id: >-
+          {{ grafana_mcp_sa_id if (grafana_mcp_sa_id | length > 0)
+             else sa_created.json.id }}
+
+    - name: Mint a service account token
+      ansible.builtin.uri:
+        url: >-
+          http://{{ node_ip }}{{ grafana_subpath }}/api/serviceaccounts/{{ grafana_mcp_sa_id }}/tokens
+        method: POST
+        url_username: "{{ grafana_admin_user }}"
+        url_password: "{{ grafana_admin_password }}"
+        force_basic_auth: true
+        body_format: json
+        body:
+          name: "ansible-{{ grafana_mcp_sa_name }}"
+        status_code: [200, 201]
+      register: sa_token
+      no_log: "{{ not grafana_mcp_debug }}"
+
+    - name: Store both tokens in one Secret
+      kubernetes.core.k8s:
+        definition:
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: "{{ grafana_mcp_secret }}"
+            namespace: "{{ grafana_mcp_namespace }}"
+          type: Opaque
+          stringData:
+            # Consumed by the chart via grafana.apiKeySecret.
+            grafana-service-account-token: "{{ sa_token.json.key }}"
+            # Presented by MCP clients as: Authorization: Bearer <token>
+            caller-token: "{{ grafana_mcp_caller_token }}"
+      no_log: "{{ not grafana_mcp_debug }}"
+
+- name: Add the Grafana community helm repo
+  kubernetes.core.helm_repository:
+    name: "{{ charts.grafana_mcp.repo_name }}"
+    repo_url: "{{ charts.grafana_mcp.repo_url }}"
+    force_update: true
+
+- name: Install the Grafana MCP server
+  kubernetes.core.helm:
+    name: "{{ grafana_mcp_release_name }}"
+    chart_ref: "{{ charts.grafana_mcp.chart }}"
+    chart_version: "{{ charts.grafana_mcp.version }}"
+    release_namespace: "{{ grafana_mcp_namespace }}"
+    update_repo_cache: true
+    values: "{{ lookup('template', 'grafana-mcp-values.yaml.j2') | from_yaml }}"
+
+- name: Apply ingress for flavor '{{ ingress_flavor }}'
+  ansible.builtin.include_tasks: "ingress_{{ ingress_flavor }}.yml"

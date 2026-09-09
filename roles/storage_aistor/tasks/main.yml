@@ -54,6 +54,14 @@
   delay: 5
   failed_when: s3_svc.resources | length == 0
 
+- name: Reap leftover mc helper pods
+  ansible.builtin.include_role:
+    name: mc_helpers
+    tasks_from: reap
+  vars:
+    mc_reap_namespace: "{{ s3_namespace }}"
+    mc_reap_pods: ["mc-verify", "mc-mkbucket", "mc-accesskey"]
+
 - name: Probe bucket access with the app key
   vars:
     mc_app_url: "{{ s3_scheme }}://{{ s3_app_access_key }}:{{ s3_app_secret_key }}@{{ s3_host }}:{{ s3_port }}"

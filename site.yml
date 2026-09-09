@@ -3,7 +3,7 @@
 # Re-runnable end to end. Useful tag subsets:
 #   ansible-playbook site.yml -t distro
 #   ansible-playbook site.yml -t storage,database
-#   ansible-playbook site.yml -t quickwit,grafana,verify
+#   ansible-playbook site.yml -t quickwit,grafana,mcp,verify
 
 - name: Provision the k8s distro on the lab node
   hosts: lab_node
@@ -88,6 +88,7 @@
       ansible.builtin.assert:
         that:
           - grafana_admin_password != "CHANGE_ME"
+          - grafana_mcp_caller_token != "CHANGE_ME"
           - s3_app_access_key != "CHANGE_ME" or s3_backend == "external"
           - s3_app_secret_key != "CHANGE_ME" or s3_backend == "external"
           - aistor_license != "CHANGE_ME" or s3_backend != "aistor"
@@ -139,6 +140,13 @@
         apply:
           tags: [grafana]
       tags: [grafana]
+
+    - name: Grafana MCP server (LLM access to Quickwit)
+      ansible.builtin.include_role:
+        name: grafana_mcp
+        apply:
+          tags: [mcp]
+      tags: [mcp]
 
     - name: End-to-end verification
       ansible.builtin.include_role:

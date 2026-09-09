@@ -1,0 +1,21 @@
+---
+grafana_mcp_release_name: grafana-mcp
+grafana_mcp_fullname: grafana-mcp
+
+# Holds both secrets: the Grafana service account token the server uses to reach
+# Grafana, and the caller token MCP clients must present to the server.
+grafana_mcp_secret: grafana-mcp-credentials
+
+# Service account created in Grafana through its API. Admin is only needed for
+# the "admin" tool category; drop to Editor or Viewer if you trim the list.
+grafana_mcp_sa_name: mcp-server
+grafana_mcp_sa_role: Admin
+
+# Stops the LLM mutating Grafana (dashboards, alert rules, annotations,
+# incidents). Root-cause analysis is a read activity, so leave this on unless
+# you deliberately want the model to write.
+grafana_mcp_disable_write: true
+
+# Un-hides the credential-carrying tasks when debugging the Grafana API calls.
+# Leaves tokens in the Ansible output, so keep it false normally.
+grafana_mcp_debug: false

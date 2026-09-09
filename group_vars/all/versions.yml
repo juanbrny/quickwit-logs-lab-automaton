@@ -63,3 +63,9 @@ charts:
     repo_url: https://grafana-community.github.io/helm-charts
     chart: grafana-community/grafana
     version: "13.2.2"
+  grafana_mcp:
+    # Moved in the same January 2026 migration as the Grafana chart.
+    repo_name: grafana-community
+    repo_url: https://grafana-community.github.io/helm-charts
+    chart: grafana-community/grafana-mcp
+    version: "0.22.0"        # appVersion 1.3.0 (grafana/mcp-grafana)

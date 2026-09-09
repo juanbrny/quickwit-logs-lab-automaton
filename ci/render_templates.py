@@ -23,7 +23,8 @@ BASE = dict(
     node_ip="10.0.0.10",
     lab_node_name="ci-node",
     playbook_dir=".",
-    grafana_admin_password="ci", aistor_license="ci",
+    grafana_admin_password="ci", grafana_mcp_caller_token="ci",
+    aistor_license="ci",
     # pinned in group_vars/all/versions.yml at runtime
     quickwit_image_tag="v0.9.0",
     grafana_quickwit_plugin_version="0.6.0",
@@ -73,7 +74,7 @@ def main():
     for backend in sorted(BACKENDS):
         contract = yaml.safe_load(open(f"vars/storage_{backend}.yml"))
         v = {**REPO_VARS, **BASE, **contract}
-        for role in ("storage_" + backend, "quickwit", "grafana", "cnpg",
+        for role in ("storage_" + backend, "quickwit", "grafana", "grafana_mcp", "cnpg",
                      "k3s", "verify", "preflight"):
             v = {**role_defaults(role), **v}
         v = resolve(env, v)

@@ -78,6 +78,14 @@
 
 # Same probe-first idempotency as AIStor: verify the outcome, provision only
 # when the verdict says it's missing, then re-probe as the real verdict.
+- name: Reap leftover mc helper pods
+  ansible.builtin.include_role:
+    name: mc_helpers
+    tasks_from: reap
+  vars:
+    mc_reap_namespace: "{{ s3_namespace }}"
+    mc_reap_pods: ["mc-verify", "mc-mkbucket"]
+
 - name: Probe bucket access with the app key
   vars:
     mc_app_url: "{{ s3_scheme }}://{{ s3_app_access_key }}:{{ s3_app_secret_key }}@{{ s3_host }}:{{ s3_port }}"
@@ -102,21 +110,18 @@
       vars:
         adm_creds: "{{ seaweedfs_admin_access_key }}:{{ seaweedfs_admin_secret_key }}"
         adm_url: "{{ s3_scheme }}://{{ adm_creds }}@{{ s3_host }}:{{ s3_port }}"
-        mc_pod: "mc-mkbucket-{{ 999999 | random }}"
       ansible.builtin.command:
         cmd: >
-          kubectl run {{ mc_pod }} --rm -i --restart=Never
-          --pod-running-timeout=2m
+          kubectl run mc-mkbucket --rm -i --restart=Never
           -n {{ s3_namespace }} --image={{ mc_image }}
           --env=MC_HOST_adm={{ adm_url }}
           --command -- sh -s
         stdin: "{{ lookup('template', playbook_dir + '/templates/mc_make_buckets.sh.j2') }}"
       register: sw_buckets
       changed_when: "'BUCKETS: DONE' in sw_buckets.stdout"
-      timeout: 180
       retries: 3
       delay: 10
-      until: "'BUCKETS: DONE' in (sw_buckets.stdout | default(''))"
+      until: sw_buckets is succeeded
 
     - name: Re-probe bucket access (must PASS now)
       vars:

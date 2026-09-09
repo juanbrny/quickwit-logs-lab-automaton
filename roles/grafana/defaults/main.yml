@@ -1,12 +1,10 @@
 ---
 grafana_release_name: grafana
-# fullnameOverride, so the Service name the IngressRoute targets is fixed.
-grafana_fullname: grafana
+# grafana_fullname lives in group_vars/all/main.yml: the grafana_mcp role needs
+# it too, and role defaults only exist while that role runs.
 
-grafana_admin_user: admin
 grafana_admin_secret: grafana-admin-credentials
 
 # grafana_admin_user, grafana_datasource_uid and grafana_datasource_name are
 # deliberately NOT here: the verify role needs them too, so they live in
 # group_vars/all/main.yml.
-

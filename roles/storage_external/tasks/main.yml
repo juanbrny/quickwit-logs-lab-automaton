@@ -24,6 +24,14 @@
       metadata:
         name: "{{ s3_namespace }}"
 
+- name: Reap leftover mc helper pods
+  ansible.builtin.include_role:
+    name: mc_helpers
+    tasks_from: reap
+  vars:
+    mc_reap_namespace: "{{ s3_namespace }}"
+    mc_reap_pods: ["mc-verify", "mc-mkbucket"]
+
 - name: Create buckets (only if the key is allowed to)
   when: external_s3_create_buckets | bool
   vars:

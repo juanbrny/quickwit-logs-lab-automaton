@@ -1,0 +1,4 @@
+---
+- name: Apply Traefik IngressRoute for the Grafana MCP server
+  kubernetes.core.k8s:
+    template: ingressroute-traefik.yaml.j2

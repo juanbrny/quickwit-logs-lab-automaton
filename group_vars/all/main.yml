@@ -121,3 +121,36 @@ grafana_storage_size: 2Gi
 grafana_admin_user: admin
 grafana_datasource_uid: quickwit
 grafana_datasource_name: Quickwit
+# Also needed by grafana_mcp to build the in-cluster Grafana Service URL.
+grafana_fullname: grafana
+
+# --- Grafana MCP server (LLM access to Quickwit through Grafana) ---
+# Same namespace as Grafana: it calls the Grafana Service, and a Traefik
+# IngressRoute may only reference a Service in its own namespace.
+grafana_mcp_namespace: "{{ grafana_namespace }}"
+# Reachable two ways, like Grafana:
+#   http://<node_ip>/mcp             via Traefik on :80
+#   http://<node_ip>:30800/mcp       direct NodePort
+grafana_mcp_subpath: /mcp
+grafana_mcp_nodeport: 30800
+
+# Deliberately NOT all 36 categories the server supports. Every category adds
+# tools to the model's context, and most target datasources this lab does not
+# run, which makes wrong tool choices more likely. This set keeps the model
+# going straight to query_quickwit.
+#
+# The full list, if you ever want it:
+#   search,datasource,incident,prometheus,loki,elasticsearch,quickwit,influxdb,
+#   alerting,dashboard,folder,oncall,asserts,sift,admin,pyroscope,navigation,
+#   annotations,rendering,snapshot,plugin,cloudwatch,examples,clickhouse,
+#   snowflake,runpanelquery,graphite,athena,api,config,provisioning,agento11y,
+#   assistant,docs,user,proxied
+# Note that "api" lets the model call any Grafana endpoint, and that agento11y
+# and assistant need Grafana Cloud plugins that do not exist here.
+grafana_mcp_enabled_tools: "search,datasource,quickwit,dashboard,navigation,docs,user"
+
+# Host-header allow-list. '*' is the documented setting for an isolated network
+# or a trusted reverse proxy, which is what this lab is. The server is still
+# protected by grafana_mcp_caller_token, and pinning real hostnames here would
+# break the moment the node IP changes.
+grafana_mcp_allowed_hosts: "*"

@@ -15,3 +15,7 @@ local_data_backup/
 
 # ansible-lint / ansible-core scratch
 .ansible/
+
+# macOS + ansible scratch
+.DS_Store
+.ansible/

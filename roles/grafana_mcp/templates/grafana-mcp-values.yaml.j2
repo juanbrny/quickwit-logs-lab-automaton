@@ -1,0 +1,61 @@
+fullnameOverride: {{ grafana_mcp_fullname }}
+
+grafana:
+  # Grafana runs with serve_from_sub_path, so it answers under {{ grafana_subpath }}
+  # on EVERY listener, including this cluster-internal one. Dropping the suffix
+  # here yields 404s on every Grafana API call.
+  url: "http://{{ grafana_fullname }}.{{ grafana_namespace }}.svc.cluster.local:80{{ grafana_subpath }}"
+  apiKeySecret:
+    name: {{ grafana_mcp_secret }}
+    key: grafana-service-account-token
+
+# Renders as --disable-write.
+disableWrite: {{ grafana_mcp_disable_write | lower }}
+
+extraArgs:
+  # streamable-http, not the image's default SSE: this is what BionicGPT and
+  # Claude custom connectors expect from a remote MCP server.
+  - "-t"
+  - "streamable-http"
+  # --enabled-tools REPLACES the default set rather than adding to it, so this
+  # list must be complete. Unknown names are silently ignored (the server just
+  # skips them), so a typo disables a category without any error.
+  - "--enabled-tools"
+  # replace() strips the whitespace the folded YAML scalar in group_vars
+  # introduces. The server splits this on "," only, so a leading space would
+  # turn "alerting" into " alerting" and silently disable the category.
+  # Plain Jinja filters here, not regex_replace: the CI renderer is bare Jinja2
+  # and has no Ansible filters.
+  - "{{ grafana_mcp_enabled_tools | replace(' ', '') | replace('\n', '') }}"
+  # Host-header validation defaults to loopback variants of the listen address.
+  # Reached over a NodePort or through Traefik the Host is the node's address,
+  # which would be rejected with 403 on every request. See the comment on
+  # grafana_mcp_allowed_hosts in group_vars for why '*' is acceptable here.
+  - "--allowed-hosts"
+  - "{{ grafana_mcp_allowed_hosts }}"
+  - "--log-level"
+  - "info"
+
+# Caller authentication. Without this the server starts but logs a security
+# error on a non-loopback address, and a future major release will refuse to
+# start at all.
+envValueFrom:
+  MCP_GRAFANA_SERVER_TOKEN:
+    secretKeyRef:
+      name: {{ grafana_mcp_secret }}
+      key: caller-token
+
+service:
+  enabled: true
+  type: NodePort
+  port: 8000
+  nodePort: {{ grafana_mcp_nodeport }}
+
+# tcpSocket rather than httpGet on purpose: kubelet sends the pod IP as the Host
+# header, which the allow-list would have to know in advance. A TCP check
+# sidesteps host validation entirely.
+readinessProbe:
+  tcpSocket:
+    port: 8000
+  initialDelaySeconds: 5
+  periodSeconds: 10
