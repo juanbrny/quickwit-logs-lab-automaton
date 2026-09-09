@@ -12,3 +12,6 @@ local_data_backup/
 *.retry
 *.patch
 *.tar.gz
+
+# ansible-lint / ansible-core scratch
+.ansible/

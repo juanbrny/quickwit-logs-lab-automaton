@@ -7,7 +7,10 @@
 # =====================================================================
 
 k3s_version: "v1.35.6+k3s1"
-helm_version: "v3.16.3"                  # SSM path only; unused on SSH
+# Installed on the node whenever k8s_control is the node itself (SSH on-node or
+# SSM). Floor is 3.17.0: the SeaweedFS chart uses the fromToml template
+# function, which does not exist in 3.16.x and fails at parse time.
+helm_version: "v3.21.4"
 
 mc_image: "quay.io/minio/mc:RELEASE.2025-05-21T01-59-54Z"
 

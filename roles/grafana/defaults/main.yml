@@ -6,7 +6,7 @@ grafana_fullname: grafana
 grafana_admin_user: admin
 grafana_admin_secret: grafana-admin-credentials
 
-# uid of the provisioned datasource. The verify role probes
-# /api/datasources/uid/<uid>/health, so keep the two in step.
-grafana_datasource_uid: quickwit
-grafana_datasource_name: Quickwit
+# grafana_admin_user, grafana_datasource_uid and grafana_datasource_name are
+# deliberately NOT here: the verify role needs them too, so they live in
+# group_vars/all/main.yml.
+

@@ -1,0 +1,146 @@
+---
+- name: Add MinIO/AIStor helm repo
+  kubernetes.core.helm_repository:
+    name: minio
+    repo_url: "{{ aistor_helm_repo }}"
+    force_update: true
+
+- name: Install AIStor operators (adminjob + object-store)
+  kubernetes.core.helm:
+    name: aistor
+    chart_ref: "{{ charts.aistor_operator.chart }}"
+    chart_version: "{{ charts.aistor_operator.version }}"
+    release_namespace: "{{ aistor_operator_namespace }}"
+    create_namespace: true
+    update_repo_cache: true
+    values:
+      license: "{{ aistor_license }}"
+    wait: true
+    wait_timeout: 180s
+
+- name: Deploy object store tenant (single node, single drive, no TLS)
+  kubernetes.core.helm:
+    name: "{{ aistor_release_name }}"
+    chart_ref: "{{ charts.aistor_objectstore.chart }}"
+    chart_version: "{{ charts.aistor_objectstore.version }}"
+    release_namespace: "{{ s3_namespace }}"
+    create_namespace: true
+    values: "{{ lookup('template', 'objectstore-values.yaml.j2') | from_yaml }}"
+
+# GATE: polls the ObjectStore CR (aistor_objectstore_name), NOT the service.
+# Fails fast on NotFound instead of retrying a name that will never appear.
+- name: Wait for object store health = green
+  ansible.builtin.command: >
+    kubectl get objectstore {{ aistor_objectstore_name }}
+    -n {{ s3_namespace }} -o jsonpath={.status.healthStatus}
+  register: store_health
+  until: store_health.stdout == "green" or 'NotFound' in (store_health.stderr | default(''))
+  retries: "{{ aistor_green_retries }}"
+  delay: "{{ aistor_green_delay }}"
+  failed_when: "'NotFound' in (store_health.stderr | default(''))"
+  changed_when: false
+
+# CONTRACT GUARD: the operator names the S3 service, and it has renamed it
+# between versions (myminio -> minio). Assert it before anyone resolves it.
+- name: Assert the contract's S3 service exists
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Service
+    name: "{{ s3_service_name }}"
+    namespace: "{{ s3_namespace }}"
+  register: s3_svc
+  until: s3_svc.resources | length > 0
+  retries: 12
+  delay: 5
+  failed_when: s3_svc.resources | length == 0
+
+- name: Reap leftover mc helper pods
+  ansible.builtin.include_role:
+    name: mc_helpers
+    tasks_from: reap
+  vars:
+    mc_reap_namespace: "{{ s3_namespace }}"
+    mc_reap_pods: ["mc-verify", "mc-mkbucket", "mc-accesskey"]
+
+- name: Probe bucket access with the app key
+  vars:
+    mc_app_url: "{{ s3_scheme }}://{{ s3_app_access_key }}:{{ s3_app_secret_key }}@{{ s3_host }}:{{ s3_port }}"
+  ansible.builtin.command:
+    cmd: >
+      kubectl run mc-verify --rm -i --restart=Never
+      -n {{ s3_namespace }} --image={{ mc_image }}
+      --env=MC_HOST_s3={{ mc_app_url }}
+      --command -- sh -s
+    stdin: "{{ lookup('template', playbook_dir + '/templates/mc_verify.sh.j2') }}"
+  register: s3_probe
+  failed_when: false
+  changed_when: false
+  retries: 3
+  delay: 10
+  until: "'no such host' not in (s3_probe.stderr | default(''))"
+
+- name: Provision buckets + scoped app key (mc with root credentials)
+  when: "'RESULT: PASS' not in s3_probe.stdout"
+  block:
+    - name: Create buckets with the root identity
+      vars:
+        mc_root_url: "{{ s3_scheme }}://{{ aistor_root_user }}:{{ aistor_root_password }}@{{ s3_host }}:{{ s3_port }}"
+      ansible.builtin.command:
+        cmd: >
+          kubectl run mc-mkbucket --rm -i --restart=Never
+          -n {{ s3_namespace }} --image={{ mc_image }}
+          --env=MC_HOST_adm={{ mc_root_url }}
+          --command -- sh -s
+        stdin: "{{ lookup('template', playbook_dir + '/templates/mc_make_buckets.sh.j2') }}"
+      register: aistor_buckets
+      changed_when: "'BUCKETS: DONE' in aistor_buckets.stdout"
+      retries: 3
+      delay: 10
+      until: aistor_buckets is succeeded
+      timeout: 120          # hard ceiling — fail instead of hanging forever
+
+    # Backend-specific: MinIO/AIStor creates scoped keys after the fact via
+    # `mc admin accesskey` (SeaweedFS declares them at deploy time instead).
+    - name: Create the scoped app access key
+      vars:
+        mc_root_url: "{{ s3_scheme }}://{{ aistor_root_user }}:{{ aistor_root_password }}@{{ s3_host }}:{{ s3_port }}"
+      ansible.builtin.command:
+        cmd: >
+          kubectl run mc-accesskey --rm -i --restart=Never
+          -n {{ s3_namespace }} --image={{ mc_image }}
+          --env=MC_HOST_adm={{ mc_root_url }}
+          --command -- sh -s
+        stdin: "{{ lookup('template', 'mc_accesskey.sh.j2') }}"
+      register: aistor_key
+      changed_when: "'KEY: CREATED' in aistor_key.stdout"
+
+    - name: Re-probe bucket access (must PASS now)
+      vars:
+        mc_app_url: "{{ s3_scheme }}://{{ s3_app_access_key }}:{{ s3_app_secret_key }}@{{ s3_host }}:{{ s3_port }}"
+      ansible.builtin.command:
+        cmd: >
+          kubectl run mc-verify --rm -i --restart=Never
+          -n {{ s3_namespace }} --image={{ mc_image }}
+          --env=MC_HOST_s3={{ mc_app_url }}
+          --command -- sh -s
+        stdin: "{{ lookup('template', playbook_dir + '/templates/mc_verify.sh.j2') }}"
+      register: s3_verify
+      failed_when: "'RESULT: PASS' not in s3_verify.stdout"
+      changed_when: false
+
+- name: Publish the S3 credential contract
+  ansible.builtin.include_role:
+    name: s3_credentials
+    tasks_from: publish
+  vars:
+    s3_publish_access_key: "{{ s3_app_access_key }}"
+    s3_publish_secret_key: "{{ s3_app_secret_key }}"
+
+- name: Show S3 contract for downstream roles
+  ansible.builtin.debug:
+    msg:
+      - "backend: aistor"
+      - "endpoint (in-cluster): {{ s3_endpoint }}"
+      - "endpoint (external):   {{ s3_endpoint_external }}"
+      - "path-style: {{ s3_force_path_style }} | region: {{ s3_region }}"
+      - "buckets: {{ s3_buckets | join(', ') }}"

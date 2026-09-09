@@ -5,7 +5,7 @@
 # plus a contract vars file (vars/storage_<s3_backend>.yml).
 # =====================================================================
 k8s_distro: k3s            # future: rke2, kubeadm, ...
-s3_backend: aistor         # aistor | seaweedfs | external
+s3_backend: seaweedfs         # aistor | seaweedfs | external
 
 # Derived from the inventory — do NOT hardcode. The lab_node group must hold
 # exactly one host (asserted in site.yml).
@@ -112,3 +112,11 @@ grafana_namespace: grafana
 grafana_subpath: /grafana
 grafana_nodeport: 30300
 grafana_storage_size: 2Gi
+
+# Shared between the grafana role (which provisions the datasource) and the
+# verify role (which probes its health endpoint). They must live here rather
+# than in roles/grafana/defaults, because role defaults only exist while that
+# role runs — a `-t verify` re-run would not see them.
+grafana_admin_user: admin
+grafana_datasource_uid: quickwit
+grafana_datasource_name: Quickwit

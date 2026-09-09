@@ -1,0 +1,21 @@
+---
+# `kubectl run --rm` deletes the pod only while the client stays attached. If the
+# run is interrupted — a dropped SSH session, Ctrl-C, a killed play — the pod
+# survives. Because these helper pods use fixed names, every later attempt then
+# fails instantly with "AlreadyExists", and the retry loops around them can never
+# recover: each retry hits the same corpse in ~0.1s.
+#
+# Reaping them first makes the mc-based tasks genuinely re-runnable.
+# Callers pass mc_reap_namespace and mc_reap_pods.
+- name: Remove leftover mc helper pods from an interrupted run
+  kubernetes.core.k8s:
+    api_version: v1
+    kind: Pod
+    name: "{{ item }}"
+    namespace: "{{ mc_reap_namespace }}"
+    state: absent
+    wait: true
+    wait_timeout: 60
+  loop: "{{ mc_reap_pods }}"
+  loop_control:
+    label: "{{ item }}"

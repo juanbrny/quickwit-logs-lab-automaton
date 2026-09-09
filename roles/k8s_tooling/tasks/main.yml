@@ -24,24 +24,44 @@
   changed_when: false
   failed_when: false
 
+# Presence alone is not enough: a node provisioned by an earlier run can carry a
+# helm too old for the charts we install. SeaweedFS 4.x uses fromToml, which
+# only exists from helm 3.17.0, and fails at template-parse time on 3.16.x.
+- name: Determine the installed helm version
+  ansible.builtin.set_fact:
+    helm_installed_version: >-
+      {{ (helm_check.stdout | default('') | regex_search('[0-9]+\.[0-9]+\.[0-9]+')) | default('0.0.0', true) }}
+
 - name: Install helm
-  when: helm_check.rc != 0
+  when: >-
+    helm_check.rc != 0
+    or helm_installed_version is version(helm_version | regex_replace('^v', ''), '<')
   block:
-    - name: Download helm
+    # Every path here is keyed by helm_version. With a fixed /tmp/helm.tar.gz,
+    # get_url (force: false by default) skips the download whenever the file
+    # exists, so a version bump silently reused the PREVIOUS tarball and the old
+    # binary stayed installed — three no-ops in a row and no error anywhere.
+    - name: Download helm {{ helm_version }}
       ansible.builtin.get_url:
         url: "https://get.helm.sh/helm-{{ helm_version }}-linux-amd64.tar.gz"
-        dest: /tmp/helm.tar.gz
+        dest: "/tmp/helm-{{ helm_version }}.tar.gz"
         mode: "0640"
 
-    - name: Unpack helm to /usr/local/bin
+    - name: Create the unpack directory for helm {{ helm_version }}
+      ansible.builtin.file:
+        path: "/tmp/helm-{{ helm_version }}"
+        state: directory
+        mode: "0750"
+
+    - name: Unpack helm {{ helm_version }}
       ansible.builtin.unarchive:
-        src: /tmp/helm.tar.gz
-        dest: /tmp
+        src: "/tmp/helm-{{ helm_version }}.tar.gz"
+        dest: "/tmp/helm-{{ helm_version }}"
         remote_src: true
 
     - name: Install the helm binary
       ansible.builtin.copy:
-        src: /tmp/linux-amd64/helm
+        src: "/tmp/helm-{{ helm_version }}/linux-amd64/helm"
         dest: /usr/local/bin/helm
         mode: "0755"
         remote_src: true
@@ -55,6 +75,22 @@
         dest: /usr/bin/helm
         state: link
         force: true
+
+    - name: Confirm the installed helm is the pinned version
+      ansible.builtin.command: helm version --short
+      register: helm_after
+      changed_when: false
+
+    - name: Fail if helm did not actually change
+      ansible.builtin.assert:
+        that:
+          - (helm_after.stdout | regex_search('[0-9]+\\.[0-9]+\\.[0-9]+'))
+            is version(helm_version | regex_replace('^v', ''), '>=')
+        fail_msg: >-
+          helm still reports {{ helm_after.stdout }} after installing
+          {{ helm_version }}. Check for another helm earlier on PATH
+          (which -a helm).
+        quiet: true
 
 # k3s installs its own kubectl but does not always symlink it. Target /usr/bin
 # (on sudo's secure_path) so it's found under become, not /usr/local/bin.

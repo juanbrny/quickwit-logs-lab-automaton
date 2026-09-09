@@ -25,26 +25,15 @@
   until: qw_version is succeeded
   changed_when: false
 
-# Quickwit reports its version with a "v" prefix (and nightly builds add a
-# suffix). Ansible's version test parses component-wise, so comparing "v0.9.0"
-# against "0.9.0" tries to order the string "v" against the integer 0 and blows
-# up. Extract the bare X.Y.Z first.
-- name: Extract the reported engine version
-  ansible.builtin.set_fact:
-    qw_reported_version: >-
-      {{ (qw_version.json.build.version | default('') | regex_search('[0-9]+\.[0-9]+\.[0-9]+'))
-         | default('0.0.0', true) }}
-
 - name: Assert the running engine is the pinned version
   ansible.builtin.assert:
     that:
       - qw_version.json.build.version is defined
-      - qw_reported_version is version(verify_expected_qw_version, '>=')
-      - qw_reported_version.startswith(verify_expected_qw_major_minor)
+      - qw_version.json.build.version is version(verify_expected_qw_version, '>=')
+      - qw_version.json.build.version.startswith(verify_expected_qw_major_minor)
     fail_msg: >-
       Expected Quickwit {{ verify_expected_qw_major_minor }}.x but the cluster
-      reports {{ qw_version.json.build.version | default('unknown') }}
-      (parsed as {{ qw_reported_version }}). Check
+      reports {{ qw_version.json.build.version | default('unknown') }}. Check
       quickwit_image_tag in group_vars/all/versions.yml — the chart falls back
       to its own appVersion (0.8.x) if image.tag is unset.
     success_msg: >-

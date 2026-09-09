@@ -3,7 +3,6 @@ quickwit_release_name: quickwit
 # fullnameOverride, so every Service name is deterministic instead of depending
 # on whether the release name happens to contain the chart name. Services are
 # <quickwit_fullname>-{indexer,searcher,metastore,control-plane,janitor}.
-quickwit_fullname: quickwit
 
 quickwit_indexer_replicas: 1
 quickwit_searcher_replicas: 1

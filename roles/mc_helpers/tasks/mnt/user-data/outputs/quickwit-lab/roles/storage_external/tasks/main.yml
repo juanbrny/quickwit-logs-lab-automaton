@@ -1,0 +1,84 @@
+---
+# No provisioning. This role's job is to prove the store is usable and then
+# publish the contract — the same contract aistor/seaweedfs publish, so cnpg
+# and byoc_logs cannot tell the difference.
+- name: Assert the external S3 store is fully specified
+  ansible.builtin.assert:
+    that:
+      - external_s3_host is defined and external_s3_host != "CHANGE_ME"
+      - external_s3_port is defined
+      - external_s3_scheme in ["http", "https"]
+      - external_s3_access_key is defined and external_s3_access_key != "CHANGE_ME"
+      - external_s3_secret_key is defined and external_s3_secret_key != "CHANGE_ME"
+    fail_msg: >-
+      s3_backend=external needs external_s3_host / _port / _scheme in
+      group_vars/all/main.yml and external_s3_access_key / _secret_key in the
+      vaulted secrets.yml.
+    quiet: true
+
+- name: Create the namespace for mc pods and the credentials Secret
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ s3_namespace }}"
+
+- name: Reap leftover mc helper pods
+  ansible.builtin.include_role:
+    name: mc_helpers
+    tasks_from: reap
+  vars:
+    mc_reap_namespace: "{{ s3_namespace }}"
+    mc_reap_pods: ["mc-verify", "mc-mkbucket"]
+
+- name: Create buckets (only if the key is allowed to)
+  when: external_s3_create_buckets | bool
+  vars:
+    mc_ext_url: >-
+      {{ s3_scheme }}://{{ external_s3_access_key }}:{{ external_s3_secret_key }}@{{ s3_host }}:{{ s3_port }}
+  ansible.builtin.command:
+    cmd: >
+      kubectl run mc-mkbucket --rm -i --restart=Never
+      -n {{ s3_namespace }} --image={{ mc_image }}
+      --env=MC_HOST_adm={{ mc_ext_url }}
+      --command -- sh -s
+    stdin: "{{ lookup('template', playbook_dir + '/templates/mc_make_buckets.sh.j2') }}"
+  register: ext_buckets
+  changed_when: "'BUCKETS: DONE' in ext_buckets.stdout"
+
+# The same verification every other backend must pass — this is what makes an
+# unmanaged store a first-class backend rather than a special case.
+- name: Verify the buckets are usable with the supplied credentials
+  vars:
+    mc_ext_url: >-
+      {{ s3_scheme }}://{{ external_s3_access_key }}:{{ external_s3_secret_key }}@{{ s3_host }}:{{ s3_port }}
+  ansible.builtin.command:
+    cmd: >
+      kubectl run mc-verify --rm -i --restart=Never
+      -n {{ s3_namespace }} --image={{ mc_image }}
+      --env=MC_HOST_s3={{ mc_ext_url }}
+      --command -- sh -s
+    stdin: "{{ lookup('template', playbook_dir + '/templates/mc_verify.sh.j2') }}"
+  register: s3_verify
+  failed_when: "'RESULT: PASS' not in s3_verify.stdout"
+  changed_when: false
+  retries: 3
+  delay: 10
+  until: s3_verify is succeeded
+
+- name: Publish the S3 credential contract
+  ansible.builtin.include_role:
+    name: s3_credentials
+    tasks_from: publish
+  vars:
+    s3_publish_access_key: "{{ external_s3_access_key }}"
+    s3_publish_secret_key: "{{ external_s3_secret_key }}"
+
+- name: Show S3 contract for downstream roles
+  ansible.builtin.debug:
+    msg:
+      - "backend: external (unmanaged — nothing provisioned)"
+      - "endpoint: {{ s3_endpoint }}"
+      - "path-style: {{ s3_force_path_style }} | region: {{ s3_region }}"
+      - "buckets: {{ s3_buckets | join(', ') }} (must already exist)"

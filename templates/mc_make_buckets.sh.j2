@@ -1,19 +1,21 @@
 # Backend-agnostic bucket creation with an ADMIN/ROOT alias ("adm").
 # Key/identity provisioning is backend-specific and stays in the role.
 set -eu
-# Readiness: `mc ready` checks the endpoint without needing list-all-buckets
-# permission (the AIStor root user is denied `ls adm/` on newer charts). The
-# real verdict is whether the `mc mb` calls below succeed.
+
+# Readiness: `mc ready` only works against MinIO health endpoints and blocks
+# forever on SeaweedFS, so we retry the first `mb` instead. It is idempotent
+# with --ignore-existing and is the real verdict anyway.
 i=0
-until mc {{ mc_opts }} ready adm/ >/dev/null 2>&1; do
+until mc {{ mc_opts }} mb --ignore-existing adm/{{ s3_buckets[0] }} >/dev/null 2>&1; do
   i=$((i+1))
   if [ "$i" -ge 12 ]; then
     echo "S3 endpoint not ready after 60s" >&2
-    mc {{ mc_opts }} ready adm/ || true
+    mc {{ mc_opts }} mb --ignore-existing adm/{{ s3_buckets[0] }} || true
     exit 1
   fi
   sleep 5
 done
+
 {% for bucket in s3_buckets %}
 mc {{ mc_opts }} mb --ignore-existing adm/{{ bucket }}
 {% endfor %}
