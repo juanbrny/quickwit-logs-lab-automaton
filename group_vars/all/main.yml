@@ -91,6 +91,7 @@ cnpg_backup_schedule: "0 */6 * * *"
 
 # --- Quickwit (upstream OSS) ---
 quickwit_namespace: quickwit
+quickwit_fullname: quickwit
 quickwit_data_bucket: quickwitdata
 quickwit_index_root_uri: "s3://quickwitdata/indexes"
 quickwit_indexer_pv_size: 5Gi
