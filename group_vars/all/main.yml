@@ -11,6 +11,13 @@ s3_backend: seaweedfs         # aistor | seaweedfs | external
 # exactly one host (asserted in site.yml).
 lab_node_name: "{{ groups['lab_node'][0] }}"
 
+# Testing VM size for preflight check. If you think the VM will fit just run
+# with -e preflight_skip=true
+preflight_required_vcpu: 8
+preflight_required_ram_gb: 32
+preflight_required_disk_gb: 50
+
+
 # Node address. Prefer the IP the node reports about itself (facts gathered in
 # play 1); fall back to ansible_host, then the inventory name. With SSM there is
 # no ansible_host (inventory name is an instance id), hence the self-report.
