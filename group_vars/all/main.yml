@@ -176,3 +176,9 @@ quickwit_mcp_namespace: quickwit-mcp
 # rewrites it back to /mcp, where the server actually listens.
 quickwit_mcp_subpath: /qwmcp
 quickwit_mcp_nodeport: 30801
+
+# quickwit-mcp v0.0.4 has NO authentication of its own. Turning this on puts
+# Traefik BasicAuth in front of it, which is the only authentication available.
+# Read the warning in roles/quickwit_mcp/defaults/main.yml before exposing the
+# service. Shared with the verify role, which treats 401 as a pass when it is on.
+quickwit_mcp_basic_auth_enabled: false

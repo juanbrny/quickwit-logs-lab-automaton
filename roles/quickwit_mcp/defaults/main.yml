@@ -19,5 +19,7 @@ quickwit_mcp_default_max_hits: 100
 # following on puts Traefik BasicAuth in front, which is the only authentication
 # available for this server today. Leave it off only if your MCP client cannot
 # send basic-auth credentials.
-quickwit_mcp_basic_auth_enabled: false
+# quickwit_mcp_basic_auth_enabled lives in group_vars/all/main.yml, NOT here:
+# the verify role reads it too, and role defaults only exist while that role is
+# running — a `-t verify` re-run would not see it.
 quickwit_mcp_basic_auth_user: mcp
