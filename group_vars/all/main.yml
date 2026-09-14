@@ -161,3 +161,18 @@ grafana_mcp_enabled_tools: "search,datasource,quickwit,dashboard,navigation,docs
 # protected by grafana_mcp_caller_token, and pinning real hostnames here would
 # break the moment the node IP changes.
 grafana_mcp_allowed_hosts: "*"
+
+# --- Quickwit MCP server (native, aggregation-capable) ---------------------
+# Complements grafana_mcp rather than replacing it. This one talks to Quickwit
+# directly and exposes aggregate_logs, which returns COUNTS rather than
+# documents — so "when did this start" becomes one date_histogram call instead
+# of several bisecting searches. It also offers describe_index, so the model
+# reads the real field names instead of guessing them.
+#
+# Trade-off: young community project (v0.0.4) with no authentication of its own.
+# Read roles/quickwit_mcp/defaults/main.yml before exposing it.
+quickwit_mcp_namespace: quickwit-mcp
+# /mcp already belongs to grafana_mcp, so this is exposed at /qwmcp and Traefik
+# rewrites it back to /mcp, where the server actually listens.
+quickwit_mcp_subpath: /qwmcp
+quickwit_mcp_nodeport: 30801

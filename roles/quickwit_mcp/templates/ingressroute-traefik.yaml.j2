@@ -1,0 +1,23 @@
+# Shares the :80 entrypoint with Quickwit, Grafana and the Grafana MCP server.
+# Quickwit owns the PathPrefix(`/`) catch-all at priority 1, so this only has to
+# outrank it.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ quickwit_mcp_fullname }}
+  namespace: {{ quickwit_mcp_namespace }}
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: PathPrefix(`{{ quickwit_mcp_subpath }}`)
+      kind: Rule
+      priority: 500
+      middlewares:
+        - name: {{ quickwit_mcp_fullname }}-stripprefix
+{% if quickwit_mcp_basic_auth_enabled %}
+        - name: {{ quickwit_mcp_fullname }}-auth
+{% endif %}
+      services:
+        - name: {{ quickwit_mcp_fullname }}
+          port: 8000

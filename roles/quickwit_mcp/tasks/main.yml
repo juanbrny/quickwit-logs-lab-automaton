@@ -1,0 +1,22 @@
+---
+- name: Create the quickwit-mcp namespace
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ quickwit_mcp_namespace }}"
+
+# The chart is published to an OCI registry rather than a classic helm repo, so
+# there is no helm_repository task here — helm resolves oci:// directly. This
+# needs helm 3.8+; we pin 3.21.4, so that is covered.
+- name: Install the Quickwit MCP server
+  kubernetes.core.helm:
+    name: "{{ quickwit_mcp_release_name }}"
+    chart_ref: "{{ charts.quickwit_mcp.chart }}"
+    chart_version: "{{ charts.quickwit_mcp.version }}"
+    release_namespace: "{{ quickwit_mcp_namespace }}"
+    values: "{{ lookup('template', 'quickwit-mcp-values.yaml.j2') | from_yaml }}"
+
+- name: Apply ingress for flavor '{{ ingress_flavor }}'
+  ansible.builtin.include_tasks: "ingress_{{ ingress_flavor }}.yml"

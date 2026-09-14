@@ -69,3 +69,8 @@ charts:
     repo_url: https://grafana-community.github.io/helm-charts
     chart: grafana-community/grafana-mcp
     version: "0.22.0"        # appVersion 1.3.0 (grafana/mcp-grafana)
+  quickwit_mcp:
+    # Published to an OCI registry, not a helm repo — no repo_name/repo_url.
+    # helm resolves oci:// natively from 3.8; we pin 3.21.4.
+    chart: oci://ghcr.io/agarwalvivek29/charts/quickwit-mcp
+    version: "0.1.1"         # appVersion 0.0.4 (agarwalvivek29/quickwit-mcp)

@@ -148,6 +148,13 @@
           tags: [mcp]
       tags: [mcp]
 
+    - name: Quickwit MCP server (native, aggregation-capable)
+      ansible.builtin.include_role:
+        name: quickwit_mcp
+        apply:
+          tags: [mcp]
+      tags: [mcp]
+
     - name: End-to-end verification
       ansible.builtin.include_role:
         name: verify

@@ -1,0 +1,12 @@
+# The server serves MCP at /mcp, but that path already belongs to the Grafana
+# MCP server, so this one is exposed at {{ quickwit_mcp_subpath }} and Traefik
+# rewrites the prefix back to /mcp before forwarding.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ quickwit_mcp_fullname }}-stripprefix
+  namespace: {{ quickwit_mcp_namespace }}
+spec:
+  replacePathRegex:
+    regex: "^{{ quickwit_mcp_subpath }}(.*)"
+    replacement: "/mcp$1"

@@ -1,0 +1,41 @@
+---
+# BasicAuth is the only authentication available in front of this server, since
+# quickwit-mcp itself has none. Skipped unless explicitly enabled.
+- name: Create the BasicAuth credentials secret
+  when: quickwit_mcp_basic_auth_enabled | bool
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: "{{ quickwit_mcp_fullname }}-basicauth"
+        namespace: "{{ quickwit_mcp_namespace }}"
+      type: Opaque
+      stringData:
+        # Traefik expects htpasswd format. Ansible's password_hash produces the
+        # bcrypt form Traefik accepts.
+        users: >-
+          {{ quickwit_mcp_basic_auth_user }}:{{
+             quickwit_mcp_basic_auth_password | password_hash('bcrypt') }}
+  no_log: true
+
+- name: Create the BasicAuth middleware
+  when: quickwit_mcp_basic_auth_enabled | bool
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: traefik.io/v1alpha1
+      kind: Middleware
+      metadata:
+        name: "{{ quickwit_mcp_fullname }}-auth"
+        namespace: "{{ quickwit_mcp_namespace }}"
+      spec:
+        basicAuth:
+          secret: "{{ quickwit_mcp_fullname }}-basicauth"
+
+- name: Apply the path-rewrite middleware
+  kubernetes.core.k8s:
+    template: middleware-traefik.yaml.j2
+
+- name: Apply Traefik IngressRoute for the Quickwit MCP server
+  kubernetes.core.k8s:
+    template: ingressroute-traefik.yaml.j2

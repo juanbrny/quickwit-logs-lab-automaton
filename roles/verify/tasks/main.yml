@@ -221,6 +221,32 @@
   changed_when: false
   no_log: true
 
+- name: Quickwit MCP server handshake succeeds
+  ansible.builtin.uri:
+    url: "http://{{ node_ip }}{{ quickwit_mcp_subpath }}"
+    method: POST
+    headers:
+      Content-Type: application/json
+      Accept: "application/json, text/event-stream"
+    body_format: json
+    body:
+      jsonrpc: "2.0"
+      id: 1
+      method: initialize
+      params:
+        protocolVersion: "2025-06-18"
+        capabilities: {}
+        clientInfo:
+          name: ansible-verify
+          version: "1.0"
+    # 401 is a pass when BasicAuth fronts it: the route works and auth is on.
+    status_code: "{{ [200, 401] if quickwit_mcp_basic_auth_enabled else [200] }}"
+  register: qwmcp_init
+  retries: 12
+  delay: 10
+  until: qwmcp_init is succeeded
+  changed_when: false
+
 - name: All good
   ansible.builtin.debug:
     msg:
@@ -233,3 +259,5 @@
       - "Grafana (NodePort): http://{{ node_ip }}:{{ grafana_nodeport }}{{ grafana_subpath }}"
       - "MCP endpoint:       http://{{ node_ip }}{{ grafana_mcp_subpath }}"
       - "MCP (NodePort):     http://{{ node_ip }}:{{ grafana_mcp_nodeport }}{{ grafana_mcp_subpath }}"
+      - "Quickwit MCP:       http://{{ node_ip }}{{ quickwit_mcp_subpath }}"
+      - "Quickwit MCP (NP):  http://{{ node_ip }}:{{ quickwit_mcp_nodeport }}/mcp"

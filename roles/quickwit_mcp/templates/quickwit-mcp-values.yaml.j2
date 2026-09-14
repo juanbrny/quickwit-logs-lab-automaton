@@ -1,0 +1,39 @@
+fullnameOverride: {{ quickwit_mcp_fullname }}
+replicaCount: {{ quickwit_mcp_replicas }}
+
+# Keeps no per-session state in the pod, so any replica can serve any request.
+# Harmless at one replica and required if you ever scale up behind the Service.
+stateless: true
+
+quickwit:
+  # Straight to the searcher Service. Unlike the Grafana MCP server there is no
+  # Grafana in the path, so there is no service account and no datasource
+  # permission model constraining what the model can read — see the warning in
+  # defaults/main.yml.
+  baseUrl: "http://{{ quickwit_fullname }}-searcher.{{ quickwit_namespace }}.svc.cluster.local:7280"
+  defaultMaxHits: "{{ quickwit_mcp_default_max_hits }}"
+  maxHitsCeiling: "{{ quickwit_mcp_max_hits_ceiling }}"
+
+service:
+  type: NodePort
+  port: 8000
+  nodePort: {{ quickwit_mcp_nodeport }}
+
+# Probes default to /health, which never calls Quickwit, so the server stays
+# Ready even if Quickwit is briefly unavailable. /status is the diagnostic that
+# does report Quickwit reachability — useful to curl, wrong for a probe.
+
+# Single-node lab: a PDB that demands a spare pod only blocks node drains.
+podDisruptionBudget:
+  enabled: false
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    memory: 512Mi
+
+ingress:
+  # Replaced by a Traefik IngressRoute — see tasks/ingress_traefik.yml.
+  enabled: false

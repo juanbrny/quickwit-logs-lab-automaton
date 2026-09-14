@@ -1,0 +1,23 @@
+---
+quickwit_mcp_release_name: quickwit-mcp
+quickwit_mcp_fullname: quickwit-mcp
+quickwit_mcp_replicas: 1
+
+# Hit ceiling for a single search_logs call. The server's own default is 500,
+# five times what the Grafana MCP server allows. aggregate_logs is unaffected:
+# it returns counts, not documents.
+quickwit_mcp_max_hits_ceiling: 500
+quickwit_mcp_default_max_hits: 100
+
+# --- READ THIS BEFORE EXPOSING THE SERVICE ---------------------------------
+# quickwit-mcp v0.0.4 has NO authentication. Its only required setting is
+# QW_BASE_URL; there is no token, no user, no allow-list. Anyone who can reach
+# the port can read every log in the cluster. It is read-only, so nothing can be
+# modified or deleted, but the data itself is fully exposed.
+#
+# That is acceptable on an isolated lab LAN and nowhere else. Turning the
+# following on puts Traefik BasicAuth in front, which is the only authentication
+# available for this server today. Leave it off only if your MCP client cannot
+# send basic-auth credentials.
+quickwit_mcp_basic_auth_enabled: false
+quickwit_mcp_basic_auth_user: mcp
