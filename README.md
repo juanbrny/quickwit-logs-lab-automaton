@@ -3,9 +3,8 @@
 [![ci](https://github.com/juanbrny/byoc-logs-lab-automaton/actions/workflows/ci.yml/badge.svg)](https://github.com/juanbrny/byoc-logs-lab-automaton/actions/workflows/ci.yml)
 
 One Ansible playbook that turns a single VM into a complete, working
-**Datadog BYOC Logs** lab: k3s, an S3 object store, a PostgreSQL metastore
-(CloudNativePG with WAL archiving), the CloudPrem chart, ingress, the Datadog
-agent for self-monitoring, and an end-to-end log-push verification at the end.
+**Quickwit** lab: k3s, an S3 object store, a PostgreSQL metastore
+(CloudNativePG with WAL archiving), the CloudPrem chart, ingress, Grafana environment for query UI, two MCPs to integrate Quickwit with LLMS, and an end-to-end log-push verification at the end.
 
 > **Lab only.** Single node, local storage, no TLS by default — a reproducible
 > test/demo environment, not a production posture.
@@ -14,7 +13,7 @@ Full documentation: **[README-detailed.md](README-detailed.md)**.
 
 ## What you can do with it
 
-- **Stand up a complete BYOC Logs environment on one VM** — every component,
+- **Stand up a complete Qwickwit Logs environment on one VM** — every component,
   from the Kubernetes distro up to a verified log push, in a single run.
 - **Choose the S3 backend** with one variable (`s3_backend`):
   - `aistor` — MinIO AIStor operator + tenant, in-cluster (default)
@@ -31,7 +30,7 @@ Full documentation: **[README-detailed.md](README-detailed.md)**.
   (`-t storage`, `-t byoc,verify`, ...).
 
 **Tested on SLES / openSUSE Leap 16.0** (RHEL/Rocky 10 planned next cycle).
-The node needs the resources of the BYOC runbook target: ~20 vCPU / 64 GB RAM /
+The node needs the resources of the Qwickwit runbook target: ~8 vCPU / 32 GB RAM /
 100 GB disk — preflight checks this before installing anything.
 
 ## Scenarios
@@ -75,7 +74,7 @@ the full pipeline — the lab is live.
 
 ```bash
 ansible-playbook site.yml -t storage         # redeploy just the S3 backend
-ansible-playbook site.yml -t byoc,verify     # redeploy BYOC + smoke test
+ansible-playbook site.yml -t byoc,verify     # redeploy Qwickwit + smoke test
 ansible-playbook site.yml -t preflight       # size-check a VM before anything
 
 # on the node:
