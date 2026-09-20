@@ -74,7 +74,7 @@ def main():
     for backend in sorted(BACKENDS):
         contract = yaml.safe_load(open(f"vars/storage_{backend}.yml"))
         v = {**REPO_VARS, **BASE, **contract}
-        for role in ("storage_" + backend, "quickwit", "grafana", "grafana_mcp", "quickwit_mcp", "cnpg",
+        for role in ("storage_" + backend, "quickwit", "vector", "grafana", "grafana_mcp", "quickwit_mcp", "cnpg",
                      "k3s", "verify", "preflight"):
             v = {**role_defaults(role), **v}
         v = resolve(env, v)

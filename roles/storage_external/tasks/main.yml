@@ -1,7 +1,7 @@
 ---
 # No provisioning. This role's job is to prove the store is usable and then
 # publish the contract — the same contract aistor/seaweedfs publish, so cnpg
-# and byoc_logs cannot tell the difference.
+# and the quickwit role cannot tell the difference.
 - name: Assert the external S3 store is fully specified
   ansible.builtin.assert:
     that:

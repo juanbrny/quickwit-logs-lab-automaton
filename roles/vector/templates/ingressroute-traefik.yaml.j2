@@ -1,0 +1,21 @@
+# Shares the :80 entrypoint with Quickwit, Grafana and the two MCP servers.
+# Quickwit owns the PathPrefix(`/`) catch-all at priority 1, so this only has
+# to outrank it.
+#
+# No path rewrite is needed: Vector's http_server source accepts any request
+# path, so {{ vector_subpath }} and the bare NodePort both reach the same source.
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ vector_fullname }}
+  namespace: {{ vector_namespace }}
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: PathPrefix(`{{ vector_subpath }}`)
+      kind: Rule
+      priority: 500
+      services:
+        - name: {{ vector_fullname }}
+          port: {{ vector_http_port }}

@@ -1,0 +1,181 @@
+role: {{ vector_role }}
+replicas: {{ vector_replicas }}
+fullnameOverride: {{ vector_fullname }}
+
+# The PVC the StatefulSet creates. The chart mounts it at customConfig.data_dir,
+# which is where the disk buffer lives — so this volume IS the buffer's backing
+# store, not incidental scratch space.
+persistence:
+  enabled: true
+  storageClassName: {{ default_storage_class }}
+  size: {{ vector_storage_size }}
+
+resources:
+  requests:
+    cpu: {{ vector_resources_cpu_request }}
+    memory: {{ vector_resources_memory_request }}
+  limits:
+    memory: {{ vector_resources_memory_limit }}
+
+# Explicit ports, because the chart only auto-derives them from customConfig
+# when service.ports is unset — and the NodePort has to be pinned for the lab.
+service:
+  enabled: true
+  type: NodePort
+  ports:
+    - name: http-ingest
+      port: {{ vector_http_port }}
+      targetPort: {{ vector_http_port }}
+      nodePort: {{ vector_nodeport }}
+      protocol: TCP
+    - name: prom-exporter
+      port: 9090
+      targetPort: 9090
+      protocol: TCP
+    - name: api
+      port: 8686
+      targetPort: 8686
+      protocol: TCP
+
+# customConfig REPLACES the chart's built-in pipeline entirely, so every
+# section Vector needs must appear here — including data_dir and api.
+customConfig:
+  # Must match the persistence mount point (the chart uses this exact value as
+  # the volume mountPath). Disk buffers are written underneath it.
+  data_dir: /vector-data-dir
+
+  api:
+    enabled: true
+    address: 0.0.0.0:8686
+
+  sources:
+    # The single entry point for the lab: anything that can POST NDJSON over
+    # HTTP can ship logs here. Vector ignores the request path, so the Traefik
+    # route at {{ vector_subpath }} and the NodePort both land on this source.
+    http_logs:
+      type: http_server
+      address: 0.0.0.0:{{ vector_http_port }}
+      # strict_path defaults to TRUE and path defaults to "/", which would
+      # reject the Traefik route at {{ vector_subpath }} with a 404. Turning it
+      # off accepts any path, so the ingress route and the bare NodePort both
+      # work without a rewrite middleware.
+      path: "/"
+      strict_path: false
+      decoding:
+        codec: json
+      framing:
+        method: newline_delimited
+
+    # Feeds the Prometheus exporter below. This is how you watch the buffer
+    # depth — the metric that shows backpressure actually happening.
+    internal_metrics:
+      type: internal_metrics
+
+  transforms:
+    # The transformation layer. Incoming logs rarely match the index doc
+    # mapping exactly, so normalise here rather than making every sender do it.
+    # Field names must line up with the seed index in
+    # roles/quickwit/templates/quickwit-values.yaml.j2, otherwise the index
+    # stores them untyped under `mode: dynamic` and searches quietly miss.
+    #
+    # Written with explicit exists() checks rather than VRL coalescing so the
+    # behaviour is obvious and a missing field can never abort the transform.
+    normalize:
+      type: remap
+      inputs: [http_logs]
+      source: |
+        # Message field: accept the common spellings, settle on `{{ quickwit_log_message_field }}`.
+        if !exists(.{{ quickwit_log_message_field }}) && exists(.message) {
+          .{{ quickwit_log_message_field }} = .message
+          del(.message)
+        }
+        if !exists(.{{ quickwit_log_message_field }}) && exists(.msg) {
+          .{{ quickwit_log_message_field }} = .msg
+          del(.msg)
+        }
+        if !exists(.{{ quickwit_log_message_field }}) {
+          .{{ quickwit_log_message_field }} = ""
+        }
+
+        # Severity: accept level/severity, normalise to upper case so the raw
+        # tokenizer on this field gives predictable search terms.
+        if !exists(.{{ quickwit_log_level_field }}) && exists(.level) {
+          .{{ quickwit_log_level_field }} = .level
+          del(.level)
+        }
+        if !exists(.{{ quickwit_log_level_field }}) && exists(.severity) {
+          .{{ quickwit_log_level_field }} = .severity
+          del(.severity)
+        }
+        if !exists(.{{ quickwit_log_level_field }}) {
+          .{{ quickwit_log_level_field }} = "INFO"
+        }
+        # Error-coalescing rather than to_string!: an abort here would drop the
+        # event entirely, and a severity of an unexpected type is not worth that.
+        .{{ quickwit_log_level_field }} = upcase(to_string(.{{ quickwit_log_level_field }}) ?? "INFO")
+
+        # Service name: `service` is the more common spelling on the wire.
+        if !exists(.service_name) && exists(.service) {
+          .service_name = .service
+          del(.service)
+        }
+        if !exists(.service_name) {
+          .service_name = "unknown"
+        }
+
+        if !exists(.host) && exists(.hostname) {
+          .host = .hostname
+          del(.hostname)
+        }
+        if !exists(.host) {
+          .host = "unknown"
+        }
+
+        # The HTTP source stamps arrival time into `timestamp`, which is the
+        # right answer for live traffic. A sender that knows its own event time
+        # overrides it by sending `event_timestamp` in RFC3339.
+        if exists(.event_timestamp) {
+          .timestamp = .event_timestamp
+          del(.event_timestamp)
+        }
+
+        # Vector's own bookkeeping — not part of the log, and `mode: dynamic`
+        # would happily index it.
+        del(.source_type)
+        del(.path)
+
+  sinks:
+    quickwit:
+      type: http
+      inputs: [normalize]
+      # Straight to the indexer Service, bypassing Traefik: this is in-cluster
+      # traffic and there is no reason to send it back out through the ingress.
+      uri: "http://{{ quickwit_fullname }}-indexer.{{ quickwit_namespace }}.svc.cluster.local:7280/api/v1/{{ quickwit_index_id }}/ingest"
+      method: post
+      encoding:
+        codec: json
+      framing:
+        method: newline_delimited
+      compression: none
+      batch:
+        max_events: {{ vector_batch_max_events }}
+        timeout_secs: {{ vector_batch_timeout_secs }}
+      request:
+        retry_attempts: 10
+      # See vector_buffer_when_full in defaults/main.yml — this is the reason
+      # this role exists.
+      buffer:
+        - type: disk
+          max_size: {{ vector_buffer_max_bytes }}
+          when_full: {{ vector_buffer_when_full }}
+      # Vector's HTTP healthcheck issues a GET against `uri`. Quickwit's ingest
+      # endpoint only answers POST, so the healthcheck always fails and fills
+      # the log with errors that mean nothing. The verify role proves the path
+      # works end to end instead.
+      healthcheck:
+        enabled: false
+
+    prom_exporter:
+      type: prometheus_exporter
+      inputs: [internal_metrics]
+      address: 0.0.0.0:9090

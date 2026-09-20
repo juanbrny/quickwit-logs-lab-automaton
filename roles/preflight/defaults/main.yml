@@ -1,5 +1,6 @@
 ---
-# Raw VM spec required (matches the runbook's target: 20 vCPU / 64 GB / 100 GB).
+# Raw VM spec required. group_vars/all/main.yml overrides these for the lab
+# (8 vCPU / 32 GB / 50 GB) — change them there, not here.
 preflight_required_vcpu: 8
 preflight_required_ram_gb: 32
 preflight_required_disk_gb: 100

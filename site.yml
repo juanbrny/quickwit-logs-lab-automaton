@@ -3,7 +3,7 @@
 # Re-runnable end to end. Useful tag subsets:
 #   ansible-playbook site.yml -t distro
 #   ansible-playbook site.yml -t storage,database
-#   ansible-playbook site.yml -t quickwit,grafana,mcp,verify
+#   ansible-playbook site.yml -t quickwit,vector,grafana,mcp,verify
 
 - name: Provision the k8s distro on the lab node
   hosts: lab_node
@@ -133,6 +133,15 @@
         apply:
           tags: [quickwit]
       tags: [quickwit]
+
+    # After Quickwit: the sink points at the indexer Service, so the target has
+    # to exist before Vector starts retrying against it.
+    - name: Vector — log ingestion front door (backpressure + transformation)
+      ansible.builtin.include_role:
+        name: vector
+        apply:
+          tags: [vector]
+      tags: [vector]
 
     - name: Grafana + the Quickwit datasource plugin
       ansible.builtin.include_role:

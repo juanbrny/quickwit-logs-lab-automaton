@@ -39,7 +39,7 @@ kubeconfig_path: >-
 
 # --- k8s distro contract (defaults for k3s; a different distro role ---
 # --- may need different values here)                                 ---
-kubeconfig_local_path: "{{ playbook_dir }}/.kubeconfig/{{ k8s_distro }}-byoc.yaml"
+kubeconfig_local_path: "{{ playbook_dir }}/.kubeconfig/{{ k8s_distro }}-quickwit.yaml"
 ingress_flavor: traefik          # consumed by quickwit/grafana to pick ingress template
 default_storage_class: local-path
 
@@ -110,6 +110,26 @@ quickwit_index_id: lab-logs
 # mapping in roles/quickwit/templates/quickwit-values.yaml.j2.
 quickwit_log_message_field: body
 quickwit_log_level_field: severity_text
+
+# --- Vector (log ingestion front door) -------------------------------------
+# Logs -> Vector -> Quickwit. Vector is deployed as an AGGREGATOR, not an
+# agent: it does not collect container logs, it receives them over HTTP and
+# acts as the backpressure and transformation layer in front of the indexer.
+#
+# Why put it there at all:
+#   * backpressure — a disk buffer absorbs bursts and Quickwit restarts, and
+#     blocks the sender instead of dropping events when it fills
+#   * transformation — senders keep their own field names; Vector maps them
+#     onto the index doc mapping in one place
+#
+# Reachable two ways, like the rest of the lab:
+#   http://<node_ip>/vector          via Traefik on :80
+#   http://<node_ip>:30900           direct NodePort
+# Vector ignores the request path, so both reach the same HTTP source.
+vector_namespace: vector
+vector_subpath: /vector
+vector_nodeport: 30900
+vector_http_port: 8080
 
 # --- Grafana ---
 grafana_namespace: grafana

@@ -17,3 +17,19 @@ verify_test_doc:
   host: "{{ lab_node_name }}"
 
 verify_search_query: "service_name:demo"
+
+# --- Logs -> Vector -> Quickwit -------------------------------------------
+# Sent with the field names a typical shipper uses, NOT the ones the index
+# expects. Vector's remap transform is what bridges the two, so a search for
+# service_name only succeeds if that transform ran.
+verify_vector_doc:
+  message: "Hello from the Ansible-provisioned lab, via Vector"
+  level: info
+  service: vector-probe
+  hostname: "{{ lab_node_name }}"
+
+verify_vector_search_query: "service_name:vector-probe"
+
+# 24 x 5s = 120s. Must comfortably exceed Quickwit's commit_timeout_secs plus
+# Vector's batch timeout, because this path cannot use commit=force.
+verify_vector_retries: 24

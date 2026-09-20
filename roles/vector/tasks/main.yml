@@ -1,0 +1,46 @@
+---
+- name: Create the Vector namespace
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: "{{ vector_namespace }}"
+
+- name: Add the Vector helm repo
+  kubernetes.core.helm_repository:
+    name: "{{ charts.vector.repo_name }}"
+    repo_url: "{{ charts.vector.repo_url }}"
+    force_update: true
+
+# wait: true because the verify role pushes a log through Vector straight
+# afterwards. Without it, helm returns while the StatefulSet is still binding
+# its PVC and the first test log is refused.
+- name: Install Vector as the log ingestion front door
+  kubernetes.core.helm:
+    name: "{{ vector_release_name }}"
+    chart_ref: "{{ charts.vector.chart }}"
+    chart_version: "{{ charts.vector.version }}"
+    release_namespace: "{{ vector_namespace }}"
+    update_repo_cache: true
+    values: "{{ lookup('template', 'vector-values.yaml.j2') | from_yaml }}"
+    wait: true
+    wait_timeout: 300s
+
+# CONTRACT GUARD: the verify role and any external shipper address Vector by
+# this Service name. A chart rename would otherwise surface as a connection
+# refused three layers away.
+- name: Assert the Vector Service exists
+  kubernetes.core.k8s_info:
+    api_version: v1
+    kind: Service
+    name: "{{ vector_fullname }}"
+    namespace: "{{ vector_namespace }}"
+  register: vector_svc
+  until: vector_svc.resources | length > 0
+  retries: 12
+  delay: 5
+  failed_when: vector_svc.resources | length == 0
+
+- name: Apply ingress for flavor '{{ ingress_flavor }}'
+  ansible.builtin.include_tasks: "ingress_{{ ingress_flavor }}.yml"

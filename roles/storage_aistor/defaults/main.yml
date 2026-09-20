@@ -12,7 +12,10 @@ aistor_objectstore_name: myminio
 # minio/minio123 pair, and "minio" is half of it. Used only to provision buckets
 # and the scoped app key. The strong password is aistor_root_password in the
 # vaulted secrets.yml.
-aistor_root_user: byocadmin
+# NOTE: this is a real credential, not a label. Changing it against an AIStor
+# tenant that is already deployed leaves the old root user in place and the new
+# one non-existent — redeploy the tenant, or pin the old value here.
+aistor_root_user: qwadmin
 # aistor_root_password comes from the vaulted secrets.yml
 aistor_green_retries: 60
 aistor_green_delay: 5

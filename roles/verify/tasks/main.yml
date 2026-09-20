@@ -127,6 +127,70 @@
     - (qw_search.json.num_hits | default(0)) > 0
   changed_when: false
 
+# --- Logs -> Vector -> Quickwit -------------------------------------------
+- name: Wait for all Vector pods to be Ready
+  ansible.builtin.command: >
+    kubectl wait --for=condition=Ready pods --all
+    -n {{ vector_namespace }} --timeout={{ verify_pod_timeout }}
+  changed_when: false
+
+# Deliberately sent with the WRONG field names: message/level/service/hostname
+# instead of body/severity_text/service_name/host. If Vector's remap transform
+# is not running, these land untyped under `mode: dynamic` and the search below
+# returns nothing. So this single test covers transport AND transformation.
+- name: Push a test log through Vector
+  ansible.builtin.uri:
+    url: "http://{{ node_ip }}{{ vector_subpath }}"
+    method: POST
+    headers:
+      Content-Type: application/x-ndjson
+    body_format: raw
+    body: "{{ verify_vector_doc | to_json }}\n"
+    status_code: [200]
+  register: vector_post
+  retries: 6
+  delay: 10
+  until: vector_post is succeeded
+  changed_when: false
+
+# Unlike the direct-ingest test there is no commit=force here: Vector's sink
+# URI carries no query string, so the document only becomes searchable after
+# Quickwit's own commit_timeout_secs (10s in roles/quickwit/defaults) plus
+# Vector's batch timeout. The retry window below is sized well past both.
+- name: Search Quickwit for the log that went through Vector
+  ansible.builtin.uri:
+    url: >-
+      http://{{ node_ip }}/api/v1/{{ quickwit_index_id }}/search?query={{
+      verify_vector_search_query | urlencode }}
+    method: GET
+    status_code: [200]
+  register: vector_search
+  retries: "{{ verify_vector_retries }}"
+  delay: 5
+  until:
+    - vector_search is succeeded
+    - (vector_search.json.num_hits | default(0)) > 0
+  changed_when: false
+
+- name: Assert Vector normalised the fields on the way through
+  vars:
+    hit: "{{ vector_search.json.hits[0] }}"
+  ansible.builtin.assert:
+    that:
+      - hit.service_name is defined
+      - hit[quickwit_log_message_field] is defined
+      - hit[quickwit_log_level_field] | default('') == 'INFO'
+    fail_msg: >-
+      The document reached Quickwit but the fields were not normalised.
+      Expected service_name / {{ quickwit_log_message_field }} /
+      {{ quickwit_log_level_field }}=INFO, got keys
+      {{ hit.keys() | list }}. Check the `normalize` remap transform in
+      roles/vector/templates/vector-values.yaml.j2.
+    success_msg: >-
+      Logs -> Vector -> Quickwit OK, fields normalised
+      (severity "{{ verify_vector_doc.level }}" -> "INFO").
+    quiet: true
+
 - name: Grafana answers on the Traefik path
   ansible.builtin.uri:
     url: "http://{{ node_ip }}{{ grafana_subpath }}/api/health"
@@ -261,3 +325,5 @@
       - "MCP (NodePort):     http://{{ node_ip }}:{{ grafana_mcp_nodeport }}{{ grafana_mcp_subpath }}"
       - "Quickwit MCP:       http://{{ node_ip }}{{ quickwit_mcp_subpath }}"
       - "Quickwit MCP (NP):  http://{{ node_ip }}:{{ quickwit_mcp_nodeport }}/mcp"
+      - "Vector ingest:      http://{{ node_ip }}{{ vector_subpath }}"
+      - "Vector (NodePort):  http://{{ node_ip }}:{{ vector_nodeport }}"

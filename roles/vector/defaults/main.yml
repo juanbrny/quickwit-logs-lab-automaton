@@ -1,0 +1,37 @@
+---
+vector_release_name: vector
+vector_fullname: vector
+
+# "Aggregator" renders a StatefulSet WITH a PersistentVolumeClaim. That is the
+# whole point of this role: the disk buffer below needs somewhere durable to
+# spill to. "Stateless-Aggregator" (a Deployment) would lose the buffer on every
+# restart, and "Agent" (a DaemonSet scraping container logs) is not what this
+# lab wants — logs are pushed to Vector, not collected by it.
+vector_role: Aggregator
+vector_replicas: 1
+
+# Backs the disk buffer. Must be comfortably larger than vector_buffer_max_bytes
+# or the pod fills its volume and stops accepting writes.
+vector_storage_size: 5Gi
+
+# --- The backpressure knob ------------------------------------------------
+# when_full: block makes Vector push back on the sender when Quickwit is slow
+# or down, instead of dropping events. The sender sees a slow or refused HTTP
+# request and can retry — which is the behaviour you want in front of an
+# indexer, and the reason Vector is in this path at all.
+#
+# The alternative, when_full: drop_newest, keeps producers fast and loses data.
+# It is the wrong default for a log pipeline, so it is not used here.
+vector_buffer_when_full: block
+# Vector rejects a disk buffer smaller than 256 MiB.
+vector_buffer_max_bytes: 1073741824      # 1 GiB
+
+# --- Batching towards Quickwit --------------------------------------------
+# Quickwit ingests NDJSON. Batching amortises the HTTP round trip; the timeout
+# bounds how long an event can sit in Vector when traffic is light.
+vector_batch_max_events: 1000
+vector_batch_timeout_secs: 1
+
+vector_resources_cpu_request: 100m
+vector_resources_memory_request: 256Mi
+vector_resources_memory_limit: 1Gi
