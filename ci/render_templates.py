@@ -68,7 +68,13 @@ def resolve(env, mapping):
 
 
 def main():
-    env = Environment(loader=FileSystemLoader("."), undefined=StrictUndefined)
+    # trim_blocks=True is NOT Jinja2's default — it IS ansible.builtin.template's.
+    # Without it this renderer produces different bytes than a real deploy: a
+    # line ending in {% endraw %} keeps its newline here and loses it under
+    # Ansible, silently gluing the next line onto it. That gap shipped a broken
+    # Vector values file past a green CI run. Keep this in sync with Ansible.
+    env = Environment(loader=FileSystemLoader("."), undefined=StrictUndefined,
+                      trim_blocks=True)
     failures = []
 
     for backend in sorted(BACKENDS):

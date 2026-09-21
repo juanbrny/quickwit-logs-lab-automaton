@@ -42,5 +42,30 @@
   delay: 5
   failed_when: vector_svc.resources | length == 0
 
+# The chart's own Service is ClusterIP (see the values file for why it cannot
+# carry the nodePort itself), so the fixed lab port is published here instead.
+#
+# The selector is READ BACK from the Service the chart just created rather than
+# spelled out: the chart builds it from its own label helpers, and copying those
+# labels by hand would stop matching the pods the day the chart changes them —
+# silently, as an empty Endpoints list rather than an error.
+- name: Publish Vector's HTTP ingest port on a pinned NodePort
+  kubernetes.core.k8s:
+    definition:
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: "{{ vector_fullname }}-nodeport"
+        namespace: "{{ vector_namespace }}"
+      spec:
+        type: NodePort
+        selector: "{{ vector_svc.resources[0].spec.selector }}"
+        ports:
+          - name: http-ingest
+            port: "{{ vector_http_port | int }}"
+            targetPort: "{{ vector_http_port | int }}"
+            nodePort: "{{ vector_nodeport | int }}"
+            protocol: TCP
+
 - name: Apply ingress for flavor '{{ ingress_flavor }}'
   ansible.builtin.include_tasks: "ingress_{{ ingress_flavor }}.yml"

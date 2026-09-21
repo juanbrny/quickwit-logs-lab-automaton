@@ -27,33 +27,11 @@ service:
   enabled: true
   type: ClusterIP
 
-# The pinned NodePort therefore lives in a Service of its own, so the lab keeps
-# a fixed port like Grafana and the MCP servers do.
-#
-# Passed as a STRING on purpose: the chart runs `tpl` directly on string
-# entries, whereas a map is round-tripped through toYaml first, which would
-# re-indent the block and throw off the nindent offsets below. The `{% raw %}{{ }}{% endraw %}` here are
-# HELM expressions, not Ansible ones — they use the chart's own label helpers so
-# the selector cannot drift if the chart changes its labels.
-extraObjects:
-  - |
-    apiVersion: v1
-    kind: Service
-    metadata:
-      name: {% raw %}{{ include "vector.fullname" . }}{% endraw %}-nodeport
-      namespace: {% raw %}{{ .Release.Namespace | quote }}{% endraw %}
-      labels:
-        {% raw %}{{- include "vector.labels" . | nindent 4 }}{% endraw %}
-    spec:
-      type: NodePort
-      selector:
-        {% raw %}{{- include "vector.selectorLabels" . | nindent 4 }}{% endraw %}
-      ports:
-        - name: http-ingest
-          port: {{ vector_http_port }}
-          targetPort: {{ vector_http_port }}
-          nodePort: {{ vector_nodeport }}
-          protocol: TCP
+# The pinned NodePort therefore lives in a Service of its own, created by the
+# role right after the install — see tasks/main.yml. It is NOT done through the
+# chart's `extraObjects`, because that would mean a Helm template nested inside
+# a YAML block scalar nested inside an Ansible template, and the escaping needed
+# to keep those three layers apart is what broke this file once already.
 
 # customConfig REPLACES the chart's built-in pipeline entirely, so every
 # section Vector needs must appear here — including data_dir and api.
