@@ -1,7 +1,10 @@
 # Quickwit Logs Lab — detailed reference
 
-> This is the long-form documentation. For a quick overview and the fastest
-> path to a running lab, start with the main [README](README.md).
+> This is the long-form reference. If you are here for the first time:
+> start with the main [README](README.md) to get the lab running, and read
+> [docs/concepts.md](docs/concepts.md) if Quickwit, Vector or MCP are new to
+> you. When something breaks, [docs/troubleshooting.md](docs/troubleshooting.md)
+> is the faster route than this document.
 
 Automates a complete single-node **upstream Quickwit** log platform: k3s, an S3
 object store (in-cluster or external), a PostgreSQL metastore via CloudNativePG
@@ -12,7 +15,43 @@ access, and an end-to-end log-push verification.
 > **Lab only.** Single node, local storage, no TLS by default. This is a
 > reproducible test and demo environment, not a production posture.
 
+## Contents
+
+**Getting it running** ·
+[What gets deployed](#what-gets-deployed) ·
+[Tested platforms](#tested-platforms) ·
+[Execution model](#execution-model--where-the-kubernetes-work-runs) ·
+[Prerequisites](#prerequisites) ·
+[First run](#first-run) ·
+[Re-runs / partial runs](#re-runs--partial-runs)
+
+**How it is put together** ·
+[The ingestion path — Vector](#the-ingestion-path--vector) ·
+[The index](#the-index) ·
+[Storage backends](#storage-backends) ·
+[Credential flow](#credential-flow) ·
+[MCP servers](#mcp-servers--llm-access-to-the-logs) ·
+[Layout](#layout)
+
+**Keeping it working** ·
+[Version pinning](#version-pinning-stable-base) ·
+[Swapping variants](#swapping-variants) ·
+[Preflight](#preflight) ·
+[Hard-won gates](#hard-won-gates-encoded-in-the-automation) ·
+[Verification](#verification) ·
+[CI](#ci)
+
 ## What gets deployed
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/architecture-dark.svg">
+  <img alt="Architecture diagram: log sources push NDJSON through Traefik to Vector, which normalises fields and forwards to the Quickwit indexer. Quickwit writes splits to an S3 object store and keeps metadata in PostgreSQL. Reads arrive through Grafana, the Quickwit UI or two MCP servers and are served by the Quickwit searcher." src="docs/images/architecture-light.svg" width="100%">
+</picture>
+
+The diagram is generated — edit `docs/images/make_architecture.py` and re-run
+it rather than hand-editing the SVGs, so the light and dark versions stay in
+step.
+
 
 | Layer | Component | Role |
 |---|---|---|
@@ -628,3 +667,9 @@ yamllint . && ansible-lint && ansible-playbook site.yml --syntax-check \
 > `ci/render_templates.py` uses **plain Jinja2**, not Ansible's templating, so
 > Ansible-only filters (`regex_replace`, `password_hash`, ...) are unavailable
 > in any template it renders. Stick to core Jinja filters in `.j2` files.
+>
+> It does set `trim_blocks=True`, because that is `ansible.builtin.template`'s
+> default and *not* Jinja2's. Without it the renderer produces different bytes
+> than a real deploy — a line ending in `{% endraw %}` keeps its newline in CI
+> and loses it under Ansible, silently gluing the next line onto it. If you add
+> another rendering path, keep it in step with Ansible the same way.
