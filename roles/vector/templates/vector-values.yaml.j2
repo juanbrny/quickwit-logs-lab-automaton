@@ -17,25 +17,43 @@ resources:
   limits:
     memory: {{ vector_resources_memory_limit }}
 
-# Explicit ports, because the chart only auto-derives them from customConfig
-# when service.ports is unset — and the NodePort has to be pinned for the lab.
+# service.ports is deliberately LEFT UNSET so the chart derives ports from
+# customConfig. Setting it breaks the install: the chart feeds the same list to
+# BOTH the ClusterIP Service and the StatefulSet's headless Service, and a
+# nodePort is forbidden on a headless (ClusterIP) Service, so the whole release
+# is rejected with
+#   Service "vector-headless" is invalid: spec.ports[0].nodePort: Forbidden
 service:
   enabled: true
-  type: NodePort
-  ports:
-    - name: http-ingest
-      port: {{ vector_http_port }}
-      targetPort: {{ vector_http_port }}
-      nodePort: {{ vector_nodeport }}
-      protocol: TCP
-    - name: prom-exporter
-      port: 9090
-      targetPort: 9090
-      protocol: TCP
-    - name: api
-      port: 8686
-      targetPort: 8686
-      protocol: TCP
+  type: ClusterIP
+
+# The pinned NodePort therefore lives in a Service of its own, so the lab keeps
+# a fixed port like Grafana and the MCP servers do.
+#
+# Passed as a STRING on purpose: the chart runs `tpl` directly on string
+# entries, whereas a map is round-tripped through toYaml first, which would
+# re-indent the block and throw off the nindent offsets below. The `{% raw %}{{ }}{% endraw %}` here are
+# HELM expressions, not Ansible ones — they use the chart's own label helpers so
+# the selector cannot drift if the chart changes its labels.
+extraObjects:
+  - |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: {% raw %}{{ include "vector.fullname" . }}{% endraw %}-nodeport
+      namespace: {% raw %}{{ .Release.Namespace | quote }}{% endraw %}
+      labels:
+        {% raw %}{{- include "vector.labels" . | nindent 4 }}{% endraw %}
+    spec:
+      type: NodePort
+      selector:
+        {% raw %}{{- include "vector.selectorLabels" . | nindent 4 }}{% endraw %}
+      ports:
+        - name: http-ingest
+          port: {{ vector_http_port }}
+          targetPort: {{ vector_http_port }}
+          nodePort: {{ vector_nodeport }}
+          protocol: TCP
 
 # customConfig REPLACES the chart's built-in pipeline entirely, so every
 # section Vector needs must appear here — including data_dir and api.
