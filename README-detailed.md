@@ -261,7 +261,7 @@ placeholder.
 | aistor-objectstore | `minio/aistor-objectstore` | `1.0.16` |
 | cnpg | `cnpg/cloudnative-pg` | `0.29.0` |
 | quickwit | `quickwit/quickwit` | `0.8.16` (engine pinned separately to `v0.9.0`) |
-| vector | `vector/vector` | `0.59.0` |
+| vector | `vector/vector` | `0.58.0` |
 | grafana | `grafana-community/grafana` | `13.2.2` |
 | grafana-mcp | `grafana-community/grafana-mcp` | `0.22.0` |
 | quickwit-mcp | `oci://ghcr.io/agarwalvivek29/charts/quickwit-mcp` | `0.1.1` |

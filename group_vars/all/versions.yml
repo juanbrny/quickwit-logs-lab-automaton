@@ -73,7 +73,11 @@ charts:
     repo_name: vector
     repo_url: https://helm.vector.dev
     chart: vector/vector
-    version: "0.59.0"        # appVersion 0.58.0-distroless-libc
+    # 0.58.0 is the newest PUBLISHED chart. The repo's main branch already
+    # carries 0.59.0 in Chart.yaml, but that is the next, unreleased version and
+    # is absent from the helm index — pin from `helm search repo vector/vector
+    # --versions`, never from a Chart.yaml on a git branch.
+    version: "0.58.0"        # appVersion 0.58.0-distroless-libc
   quickwit_mcp:
     # Published to an OCI registry, not a helm repo — no repo_name/repo_url.
     # helm resolves oci:// natively from 3.8; we pin 3.21.4.
